@@ -1,4 +1,7 @@
 yandex_key.env
+secr_env.env
+secr_ci_key.json
+secr_s3_key.json
 authorized_key.json
 sa-key*.json
 *.tfstate
