@@ -1,0 +1,36 @@
+# Edge service accounts and folder roles.
+# Consumed later by provision / GitHub Actions. Do not reuse logos-* accounts.
+
+name_prefix: pharma-edge
+
+folder_id: b1g07nbj3q7ccru38on0
+cloud_id: b1gip1vv7381q4bsoaso
+
+service_accounts:
+  - name: pharma-edge-sa-func
+    description: Runtime SA for Cloud Functions (YDB, YMQ, Object Storage dossier)
+    roles:
+      - functions.functionInvoker
+      - ydb.editor
+      - ymq.writer
+      - ymq.reader
+      - storage.editor
+      - lockbox.payloadViewer
+
+  - name: pharma-edge-sa-gateway
+    description: API Gateway invokes functions and reads static bucket if needed
+    roles:
+      - functions.functionInvoker
+      - storage.viewer
+
+  - name: pharma-edge-sa-ci
+    description: GitHub Actions deploy functions, queues, gateway spec
+    roles:
+      - functions.editor
+      - serverless.functions.invoker
+      - ymq.admin
+      - storage.editor
+      - lockbox.editor
+      - lockbox.payloadViewer
+      - ydb.editor
+      - api-gateway.editor

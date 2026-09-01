@@ -1,0 +1,14 @@
+yandex_key.env
+authorized_key.json
+sa-key*.json
+*.tfstate
+*.tfstate.*
+.lockbox-payload.json
+.env
+.env.local
+*.log
+.DS_Store
+Thumbs.db
+__pycache__/
+.venv/
+node_modules/
