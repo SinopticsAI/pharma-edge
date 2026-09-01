@@ -4,7 +4,7 @@
 
 `item_type` **не** выбирает workflow (правило Logos SCRUM-148). Workflow задаёт `settings.workflow`. Тип файла выбирает схему извлечения в Plane.
 
-Кода в этом репозитории пока нет. Ниже — целевой манифест для будущего `.github/functions-paths.json` и каталога `scr/`.
+Манифест волны 1: [`.github/functions-paths.json`](../.github/functions-paths.json). Код — `scr/<id>/`. Общие модули копируются из `scr/_shared/` скриптом `infra/scripts/sync_shared.py`.
 
 ## 1. Ядро кабинета
 
@@ -85,4 +85,4 @@ doc/api-gateway-openapi.yaml
 sql/
 ```
 
-OpenAPI шлюза появится вместе с волной 1. Существующий `pharma-api-gateway` сейчас раздаёт только статику; маршруты функций навешиваются отдельной spec, бакет досье не смешивается со статикой.
+OpenAPI волны 1 — [`infra/gateway/openapi.template.yaml`](../infra/gateway/openapi.template.yaml) на отдельном `pharma-edge-api-gateway`. Существующий `pharma-api-gateway` остаётся только статикой; бакет досье не смешивается со статикой.

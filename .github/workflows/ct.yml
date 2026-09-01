@@ -1,0 +1,44 @@
+name: CT
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  detect-changes:
+    uses: ./.github/workflows/detect-changes.yml
+    with:
+      event_name: ${{ github.event_name }}
+      pr_base_sha: ${{ github.event.pull_request.base.sha }}
+      diff_head: ${{ github.sha }}
+
+  validate:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync shared helpers
+        run: python3 infra/scripts/sync_shared.py
+
+      - name: Validate function layout and compile
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, sys
+          manifest = json.loads(pathlib.Path(".github/functions-paths.json").read_text())
+          missing = []
+          for entry in manifest:
+              root = pathlib.Path(entry["path"])
+              for name in ("index.py", "requirements.txt", "common_log.py"):
+                  if not (root / name).is_file():
+                      missing.append(f"{root}/{name}")
+          if missing:
+              print("missing files:", *missing, sep="\n")
+              sys.exit(1)
+          PY
+          python3 -m compileall -q scr
+
+      - name: Render gateway spec placeholders exist
+        run: test -f infra/gateway/openapi.template.yaml

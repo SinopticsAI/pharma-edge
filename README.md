@@ -8,7 +8,7 @@ Edge-слой портала государственной регистраци
 **Продуктовый источник:** [`pharma_cert/portal/view/07-backendnoe.md`](https://github.com/SinopticsAI).  
 **Конвенции CI/CD:** [`SinopticsAI/yandex-cloud-functions`](https://github.com/SinopticsAI/yandex-cloud-functions) (Logos Edge). Этот репозиторий **не** делит квоту и биллинг с Logos.
 
-На этом этапе в репозитории только спецификации конфигурации и деплоя. Кода функций и живого `yc apply` нет.
+Волна 1 в репозитории: Cloud Functions в `scr/`, DDL в `sql/`, отдельный шлюз в `infra/`. Первый подъём — [`infra/README.md`](infra/README.md).
 
 ## Что владеет Edge
 
@@ -37,6 +37,7 @@ Edge-слой портала государственной регистраци
 | [`spec/deploy.md`](spec/deploy.md) | CI/CD, секреты, Environments |
 | [`spec/cutover.md`](spec/cutover.md) | Переключение на Plane и откат |
 | [`iam.yml`](iam.yml) | Черновик сервисных аккаунтов |
+| [`infra/README.md`](infra/README.md) | Отдельный `pharma-edge-api-gateway` на `pharma-edge.sinoptics.ru` |
 
 ## Каталог Yandex Cloud
 

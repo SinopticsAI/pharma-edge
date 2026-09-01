@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - feature**
+      - features**
+  workflow_dispatch:
+
+env:
+  FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+  FUNCTION_RUNTIME: python312
+  FUNCTION_ENTRYPOINT: index.handler
+
+jobs:
+  detect-changes:
+    uses: ./.github/workflows/detect-changes.yml
+    with:
+      event_name: ${{ github.event_name }}
+      diff_head: ${{ github.sha }}
+
+  deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_work == 'true'
+    runs-on: ubuntu-latest
+    environment: preprod
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync shared helpers
+        run: python3 infra/scripts/sync_shared.py
+
+      - name: Resolve function
+        id: fn
+        env:
+          MATRIX_ID: ${{ matrix.id }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          mid = os.environ["MATRIX_ID"]
+          data = json.load(open(".github/functions-paths.json", encoding="utf-8"))
+          entry = next(item for item in data if item["id"] == mid)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"yc_name={entry['yc_name']}\n")
+              fh.write(f"path={entry['path']}\n")
+          PY
+
+      - name: Deploy function
+        uses: yc-actions/yc-sls-function@v3.1.0
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+          folder-id: ${{ env.FOLDER_ID }}
+          function-name: ${{ steps.fn.outputs.yc_name }}
+          runtime: ${{ env.FUNCTION_RUNTIME }}
+          entrypoint: ${{ env.FUNCTION_ENTRYPOINT }}
+          memory: "256mb"
+          execution-timeout: "30"
+          service-account: ${{ secrets.YC_SA_PREPROD_ID }}
+          source-root: ${{ steps.fn.outputs.path }}
+          include: |
+            **/*.py
+            requirements.txt
+          environment: |
+            DEPLOY_ENV=preprod
+            YC_FUNCTION_NAME=${{ steps.fn.outputs.yc_name }}
+            YDB_ENDPOINT=${{ secrets.YDB_ENDPOINT }}
+            YDB_DATABASE=${{ secrets.YDB_DATABASE }}
+            DOSSIER_BUCKET=pharma-dossier
+            S3_ENDPOINT=https://storage.yandexcloud.net
+            PHARMA_EDGE_API_KEY=${{ secrets.PHARMA_EDGE_API_KEY }}
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}

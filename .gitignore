@@ -12,3 +12,6 @@ Thumbs.db
 __pycache__/
 .venv/
 node_modules/
+infra/account.env
+infra/gateway/openapi.yaml
+infra/.build/

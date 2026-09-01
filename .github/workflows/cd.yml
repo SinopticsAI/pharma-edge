@@ -1,0 +1,113 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+  FUNCTION_RUNTIME: python312
+  FUNCTION_ENTRYPOINT: index.handler
+
+jobs:
+  detect-changes:
+    uses: ./.github/workflows/detect-changes.yml
+    with:
+      event_name: ${{ github.event_name }}
+      diff_head: ${{ github.sha }}
+
+  deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_work == 'true'
+    runs-on: ubuntu-latest
+    environment: prod
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync shared helpers
+        run: python3 infra/scripts/sync_shared.py
+
+      - name: Resolve function
+        id: fn
+        env:
+          MATRIX_ID: ${{ matrix.id }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          mid = os.environ["MATRIX_ID"]
+          data = json.load(open(".github/functions-paths.json", encoding="utf-8"))
+          entry = next(item for item in data if item["id"] == mid)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"yc_name={entry['yc_name']}\n")
+              fh.write(f"path={entry['path']}\n")
+          PY
+
+      - name: Deploy function
+        uses: yc-actions/yc-sls-function@v3.1.0
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+          folder-id: ${{ env.FOLDER_ID }}
+          function-name: ${{ steps.fn.outputs.yc_name }}
+          runtime: ${{ env.FUNCTION_RUNTIME }}
+          entrypoint: ${{ env.FUNCTION_ENTRYPOINT }}
+          memory: "256mb"
+          execution-timeout: "30"
+          service-account: ${{ secrets.YC_SA_PROD_ID }}
+          source-root: ${{ steps.fn.outputs.path }}
+          include: |
+            **/*.py
+            requirements.txt
+          environment: |
+            DEPLOY_ENV=prod
+            YC_FUNCTION_NAME=${{ steps.fn.outputs.yc_name }}
+            YDB_ENDPOINT=${{ secrets.YDB_ENDPOINT }}
+            YDB_DATABASE=${{ secrets.YDB_DATABASE }}
+            DOSSIER_BUCKET=pharma-dossier
+            S3_ENDPOINT=https://storage.yandexcloud.net
+            PHARMA_EDGE_API_KEY=${{ secrets.PHARMA_EDGE_API_KEY }}
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  update-gateway:
+    needs: [detect-changes, deploy]
+    if: needs.detect-changes.outputs.has_work == 'true' && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Yandex Cloud CLI
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /opt/yc -n
+          echo "/opt/yc/bin" >> "$GITHUB_PATH"
+
+      - name: Activate service account
+        run: |
+          echo '${{ secrets.YC_SA_JSON_CREDENTIALS }}' > "$HOME/sa.json"
+          yc config profile create pharma-edge-ci || true
+          yc config set service-account-key "$HOME/sa.json"
+          yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
+          yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
+
+      - name: Render and update pharma-edge-api-gateway
+        env:
+          CUSTOM_DOMAIN: pharma-edge.sinoptics.ru
+          SA_API_GATEWAY_ID: ${{ secrets.SA_API_GATEWAY_ID }}
+        run: |
+          set -euo pipefail
+          python3 infra/scripts/render_gateway.py
+          GW_ID="${{ secrets.API_GATEWAY_ID }}"
+          if [ -z "$GW_ID" ]; then
+            GW_ID=$(yc serverless api-gateway list --format json \
+              | jq -r '.[] | select(.name=="pharma-edge-api-gateway") | .id')
+          fi
+          if [ -z "$GW_ID" ]; then
+            echo "pharma-edge-api-gateway not found; run infra/scripts/deploy-gateway.ps1 once"
+            exit 1
+          fi
+          yc serverless api-gateway update --id "$GW_ID" --spec infra/gateway/openapi.yaml

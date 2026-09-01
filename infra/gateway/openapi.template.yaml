@@ -1,0 +1,280 @@
+openapi: 3.0.0
+info:
+  title: pharma-edge
+  version: "0.1.0"
+  description: Wave 1 Edge API on pharma-edge.sinoptics.ru. Static portal stays on pharma-api-gateway.
+servers:
+  - url: https://__CUSTOM_DOMAIN__
+x-yc-apigateway:
+  payload_format_version: "1.0"
+x-yc-apigateway-cors:
+  allowOrigin: "*"
+  allowMethods: ["GET", "POST", "PATCH", "OPTIONS"]
+  allowHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Pharma-Contour", "X-Request-Id"]
+  exposeHeaders: ["Content-Length", "X-Request-ID"]
+  maxAge: 3600
+paths:
+  /:
+    get:
+      summary: Health
+      x-yc-apigateway-integration:
+        type: dummy
+        content:
+          "*": '{"ok":true,"service":"pharma-edge"}'
+        http_code: 200
+        http_headers:
+          Content-Type: application/json
+          Access-Control-Allow-Origin: "*"
+      responses:
+        "200":
+          description: Health
+  /cases:
+    options:
+      x-yc-apigateway-integration:
+        type: dummy
+        content:
+          "*": ""
+        http_code: 200
+        http_headers:
+          Access-Control-Allow-Origin: "*"
+          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
+          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
+          Access-Control-Max-Age: "3600"
+      responses:
+        "200":
+          description: CORS
+    get:
+      summary: List cases
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: __FN_CASES__
+        service_account_id: __SA_API_GATEWAY_ID__
+        tag: "$latest"
+        payload_format_version: "1.0"
+      responses:
+        "200":
+          description: Case list
+    post:
+      summary: Create case
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: __FN_CASES__
+        service_account_id: __SA_API_GATEWAY_ID__
+        tag: "$latest"
+        payload_format_version: "1.0"
+      responses:
+        "201":
+          description: Created
+  /cases/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    options:
+      x-yc-apigateway-integration:
+        type: dummy
+        content:
+          "*": ""
+        http_code: 200
+        http_headers:
+          Access-Control-Allow-Origin: "*"
+          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
+          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
+          Access-Control-Max-Age: "3600"
+      responses:
+        "200":
+          description: CORS
+    get:
+      summary: Get case
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: __FN_CASE_GET__
+        service_account_id: __SA_API_GATEWAY_ID__
+        tag: "$latest"
+        payload_format_version: "1.0"
+      responses:
+        "200":
+          description: Case card
+    patch:
+      summary: Update case
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: __FN_CASE_UPDATE__
+        service_account_id: __SA_API_GATEWAY_ID__
+        tag: "$latest"
+        payload_format_version: "1.0"
+      responses:
+        "200":
+          description: Updated
+  /cases/{id}/items:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    options:
+      x-yc-apigateway-integration:
+        type: dummy
+        content:
+          "*": ""
+        http_code: 200
+        http_headers:
+          Access-Control-Allow-Origin: "*"
+          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
+          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
+          Access-Control-Max-Age: "3600"
+      responses:
+        "200":
+          description: CORS
+    get:
+      summary: List dossier items
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: __FN_DOSSIER_ITEMS__
+        service_account_id: __SA_API_GATEWAY_ID__
+        tag: "$latest"
+        payload_format_version: "1.0"
+      responses:
+        "200":
+          description: Items
+  /cases/{id}/items/upload-url:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    options:
+      x-yc-apigateway-integration:
+        type: dummy
+        content:
+          "*": ""
+        http_code: 200
+        http_headers:
+          Access-Control-Allow-Origin: "*"
+          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
+          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
+          Access-Control-Max-Age: "3600"
+      responses:
+        "200":
+          description: CORS
+    post:
+      summary: Presigned dossier upload URL
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: __FN_DOSSIER_ITEMS__
+        service_account_id: __SA_API_GATEWAY_ID__
+        tag: "$latest"
+        payload_format_version: "1.0"
+      responses:
+        "200":
+          description: Presigned PUT
+  /cases/{id}/items/{itemId}/confirm-upload:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    options:
+      x-yc-apigateway-integration:
+        type: dummy
+        content:
+          "*": ""
+        http_code: 200
+        http_headers:
+          Access-Control-Allow-Origin: "*"
+          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
+          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
+          Access-Control-Max-Age: "3600"
+      responses:
+        "200":
+          description: CORS
+    post:
+      summary: Confirm dossier upload
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: __FN_DOSSIER_ITEMS__
+        service_account_id: __SA_API_GATEWAY_ID__
+        tag: "$latest"
+        payload_format_version: "1.0"
+      responses:
+        "200":
+          description: Confirmed item
+  /cases/{id}/statuses:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    options:
+      x-yc-apigateway-integration:
+        type: dummy
+        content:
+          "*": ""
+        http_code: 200
+        http_headers:
+          Access-Control-Allow-Origin: "*"
+          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
+          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
+          Access-Control-Max-Age: "3600"
+      responses:
+        "200":
+          description: CORS
+    get:
+      summary: List statuses
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: __FN_STATUS_INGEST__
+        service_account_id: __SA_API_GATEWAY_ID__
+        tag: "$latest"
+        payload_format_version: "1.0"
+      responses:
+        "200":
+          description: Statuses
+    post:
+      summary: Ingest operator status
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: __FN_STATUS_INGEST__
+        service_account_id: __SA_API_GATEWAY_ID__
+        tag: "$latest"
+        payload_format_version: "1.0"
+      responses:
+        "201":
+          description: Created status
+  /registry/search:
+    options:
+      x-yc-apigateway-integration:
+        type: dummy
+        content:
+          "*": ""
+        http_code: 200
+        http_headers:
+          Access-Control-Allow-Origin: "*"
+          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
+          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
+          Access-Control-Max-Age: "3600"
+      responses:
+        "200":
+          description: CORS
+    get:
+      summary: Registry search (cached, not truth)
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: __FN_REGISTRY_SEARCH__
+        service_account_id: __SA_API_GATEWAY_ID__
+        tag: "$latest"
+        payload_format_version: "1.0"
+      responses:
+        "200":
+          description: Search hits

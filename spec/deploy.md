@@ -1,6 +1,6 @@
 # Деплой Edge
 
-Конвенции как у [`yandex-cloud-functions/.github/workflows`](https://github.com/SinopticsAI/yandex-cloud-functions): селективный деплой по `scr/**`, Environments `preprod` / `prod`. Workflow YAML в этом репозитории ещё не заведены — это спецификация, по которой их писать.
+Конвенции как у [`yandex-cloud-functions/.github/workflows`](https://github.com/SinopticsAI/yandex-cloud-functions): селективный деплой по `scr/**`, Environments `preprod` / `prod`. Workflow YAML — [`.github/workflows`](../.github/workflows): селективный деплой `scr/**` в Environments `preprod` / `prod`. Первый локальный подъём — [`infra/README.md`](../infra/README.md).
 
 Terraform не используем.
 
@@ -73,14 +73,21 @@ yc config profile activate pharma-edge
 
 Ключ SA передаётся через `yc config set service-account-key <файл вне репо>`.
 
-## Первый подъём волны 1 (когда появится код)
+## Первый подъём волны 1
 
-1. Provision SA из `iam.yml`.
-2. Создать бакет досье (private) и YDB-таблицы из [`ydb.md`](ydb.md).
-3. Создать очереди YMQ + DLQ.
-4. Выложить `cases*`, `dossier_items`, `status_ingest`, `calendar_tick`, `registry_search`.
-5. Навесить маршруты на API Gateway (отдельная spec, не ломая статику `pharma.sinoptics.ru`).
-6. `PHARMA_PLANE_BASE_URL` не обязателен до волны 1b.
+Отдельный шлюз `pharma-edge-api-gateway` на `pharma-edge.sinoptics.ru`. Статический `pharma-api-gateway` не трогаем.
+
+```powershell
+.\infra\scripts\discover.ps1
+.\infra\scripts\provision.ps1
+.\infra\scripts\ensure-ydb.ps1
+.\infra\scripts\apply-sql.ps1
+.\infra\scripts\deploy-function.ps1
+.\infra\scripts\deploy-gateway.ps1
+.\infra\scripts\deploy-dns.ps1
+```
+
+`PHARMA_PLANE_BASE_URL` не обязателен до волны 1b.
 
 ## Проверка
 

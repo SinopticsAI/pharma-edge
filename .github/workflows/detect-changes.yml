@@ -1,0 +1,85 @@
+name: Detect changed functions
+
+on:
+  workflow_call:
+    inputs:
+      event_name:
+        required: false
+        type: string
+        default: ""
+      diff_base:
+        required: false
+        type: string
+        default: ""
+      pr_base_sha:
+        required: false
+        type: string
+        default: ""
+      diff_head:
+        required: false
+        type: string
+        default: ""
+      force_deploy_all:
+        required: false
+        type: string
+        default: "false"
+    outputs:
+      has_work:
+        value: ${{ jobs.detect.outputs.has_work }}
+      matrix:
+        value: ${{ jobs.detect.outputs.matrix }}
+      deploy_all:
+        value: ${{ jobs.detect.outputs.deploy_all }}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      has_work: ${{ steps.detect.outputs.has_work }}
+      matrix: ${{ steps.detect.outputs.matrix }}
+      deploy_all: ${{ steps.detect.outputs.deploy_all }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve diff range
+        id: diff
+        shell: bash
+        env:
+          INPUT_EVENT_NAME: ${{ inputs.event_name }}
+          INPUT_DIFF_BASE: ${{ inputs.diff_base }}
+          INPUT_PR_BASE_SHA: ${{ inputs.pr_base_sha }}
+          INPUT_DIFF_HEAD: ${{ inputs.diff_head }}
+          INPUT_FORCE_DEPLOY_ALL: ${{ inputs.force_deploy_all }}
+        run: |
+          set -euo pipefail
+          event_name="${INPUT_EVENT_NAME:-${{ github.event_name }}}"
+          if [ "$event_name" = "pull_request" ]; then
+            base="${INPUT_PR_BASE_SHA:-${{ github.event.pull_request.base.sha }}}"
+            head="${INPUT_DIFF_HEAD:-${{ github.sha }}}"
+          else
+            base="${INPUT_DIFF_BASE:-${{ github.event.before }}}"
+            if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+              base="$(git rev-parse HEAD~1 2>/dev/null || true)"
+            fi
+            if [ -z "$base" ]; then
+              base="$(git hash-object -t tree /dev/null)"
+            fi
+            head="${INPUT_DIFF_HEAD:-${{ github.sha }}}"
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          deploy_all="${INPUT_FORCE_DEPLOY_ALL:-false}"
+          echo "deploy_all=$deploy_all" >> "$GITHUB_OUTPUT"
+
+      - name: Detect changed functions
+        id: detect
+        shell: bash
+        env:
+          DIFF_BASE: ${{ steps.diff.outputs.base }}
+          DIFF_HEAD: ${{ steps.diff.outputs.head }}
+          DEPLOY_ALL: ${{ steps.diff.outputs.deploy_all }}
+          FORCE_DEPLOY_ALL: ${{ inputs.force_deploy_all }}
+          GITHUB_EVENT_NAME: ${{ inputs.event_name != '' && inputs.event_name || github.event_name }}
+        run: bash .github/scripts/detect-changed-functions.sh
