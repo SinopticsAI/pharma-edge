@@ -31,7 +31,7 @@ Edge-слой портала государственной регистраци
 
 | Файл | Содержание |
 | --- | --- |
-| [`spec/design.md`](spec/design.md) | Разрез слёв и волны внедрения |
+| [`spec/design.md`](spec/design.md) | Разрез слоёв и волны внедрения |
 | [`spec/functions.md`](spec/functions.md) | Инвентарь Cloud Functions |
 | [`spec/ydb.md`](spec/ydb.md) | Таблицы SoR |
 | [`spec/deploy.md`](spec/deploy.md) | CI/CD, секреты, Environments |
