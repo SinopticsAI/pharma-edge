@@ -1,3 +1,4 @@
+# Canon: SinopticsAI/pharma-postgracesql. Keep this copy in sync or run that repo.
 # Managed PostgreSQL for the cabinet SoR and the agent memory.
 #
 # Two databases in one cluster, separate owners:

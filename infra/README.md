@@ -4,6 +4,10 @@
 `pharma.sinoptics.ru` (`pharma-api-gateway`) **не трогаем** — как
 `orders-api-gateway` не трогает `sinoptics-api-gateway`.
 
+Канон шлюза и DNS — [`pharma_env`](https://github.com/SinopticsAI/pharma_env).
+Здесь шлюз только пересобирается после деплоя функций; создание шлюза,
+привязка домена и CNAME делаются оттуда.
+
 Ключ `yandex_key.env` в корне — только bootstrap `yc`. Не коммитить.
 Профиль:
 
@@ -22,22 +26,27 @@ yc config profile activate pharma-edge
 | --- | --- |
 | [scripts/discover.ps1](scripts/discover.ps1) | Сети, сертификат, DNS, уже созданные id |
 | [scripts/provision.ps1](scripts/provision.ps1) | SA, бакет `pharma-dossier`, YMQ+DLQ, Lockbox |
-| [scripts/ensure-postgres.ps1](scripts/ensure-postgres.ps1) | Кластер: реплика, авторост диска, защита от удаления, доступ `serverless`, правило 6432, базы `pharma_cabinet` и `pharma_agent` |
-| [scripts/apply-sql.ps1](scripts/apply-sql.ps1) | DDL + сид аккаунта и организаций |
+| [scripts/ensure-postgres.ps1](scripts/ensure-postgres.ps1) | **копия.** Канон — [`pharma-postgracesql`](https://github.com/SinopticsAI/pharma-postgracesql): реплика, авторост, serverless, базы |
+| [scripts/apply-sql.ps1](scripts/apply-sql.ps1) | **копия.** Канон DDL — `pharma-postgracesql/sql` |
 | [scripts/deploy-function.ps1](scripts/deploy-function.ps1) | Cloud Functions волны 1 + timer `calendar_tick` |
-| [scripts/deploy-gateway.ps1](scripts/deploy-gateway.ps1) | `pharma-edge-api-gateway` + spec |
-| [scripts/deploy-dns.ps1](scripts/deploy-dns.ps1) | CNAME `pharma-edge.sinoptics.ru.` |
+| [scripts/deploy-gateway.ps1](scripts/deploy-gateway.ps1) | **копия.** Канон — [`pharma_env`](https://github.com/SinopticsAI/pharma_env): шлюз, spec, привязка домена |
+| [scripts/deploy-dns.ps1](scripts/deploy-dns.ps1) | **копия.** Канон CNAME — `pharma_env` |
+| [gateway/openapi.template.yaml](gateway/openapi.template.yaml) | **копия.** Канон маршрутов — `pharma_env/infra/gateway` |
 
 Порядок первого подъёма:
 
 ```powershell
+# сначала канон кластера: D:\_sinoptics_git\pharma-postgracesql
+#   .\infra\scripts\discover.ps1
+#   .\infra\scripts\ensure-postgres.ps1
+#   .\infra\scripts\apply-sql.ps1
 .\infra\scripts\discover.ps1
 .\infra\scripts\provision.ps1
-.\infra\scripts\ensure-postgres.ps1
-.\infra\scripts\apply-sql.ps1   # изнутри сети кластера: публичного хоста нет
 .\infra\scripts\deploy-function.ps1
-.\infra\scripts\deploy-gateway.ps1
-.\infra\scripts\deploy-dns.ps1
+# затем шлюз и DNS: D:\_sinoptics_git\pharma_env
+#   .\infra\scripts\discover.ps1
+#   .\infra\scripts\deploy-gateway.ps1
+#   .\infra\scripts\deploy-dns.ps1
 ```
 
 Живые URL после DNS:

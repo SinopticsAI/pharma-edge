@@ -22,6 +22,9 @@ jobs:
     if: needs.detect-changes.outputs.has_work == 'true'
     runs-on: ubuntu-latest
     environment: prod
+    concurrency:
+      group: yc-serverless-deploy-prod-${{ matrix.id }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       max-parallel: 3
@@ -47,6 +50,24 @@ jobs:
               fh.write(f"path={entry['path']}\n")
           PY
 
+      - name: Prepare function env
+        id: env
+        env:
+          DEPLOY_ENV: prod
+          YC_FUNCTION_NAME: ${{ steps.fn.outputs.yc_name }}
+          MATRIX_ID: ${{ matrix.id }}
+          PG_HOST: ${{ secrets.PG_HOST }}
+          PG_CABINET_PASSWORD: ${{ secrets.PG_CABINET_PASSWORD }}
+          PHARMA_EDGE_API_KEY: ${{ secrets.PHARMA_EDGE_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          PHARMA_PLANE_BASE_URL: ${{ secrets.PHARMA_PLANE_BASE_URL }}
+          LOCKBOX_PG_ID: ${{ secrets.LOCKBOX_PG_ID }}
+          LOCKBOX_HTTP_ID: ${{ secrets.LOCKBOX_HTTP_ID }}
+          LOCKBOX_S3_ID: ${{ secrets.LOCKBOX_S3_ID }}
+          VPC_NETWORK_ID: ${{ secrets.VPC_NETWORK_ID }}
+        run: python3 .github/scripts/prepare-function-env.py
+
       - name: Deploy function
         uses: yc-actions/yc-sls-function@v3.1.0
         with:
@@ -62,20 +83,9 @@ jobs:
           include: |
             **/*.py
             requirements.txt
-          environment: |
-            DEPLOY_ENV=prod
-            YC_FUNCTION_NAME=${{ steps.fn.outputs.yc_name }}
-            PG_HOST=${{ secrets.PG_HOST }}
-            PG_PORT=6432
-            PG_DATABASE=pharma_cabinet
-            PG_USER=pharma_cabinet
-            PG_PASSWORD=${{ secrets.PG_CABINET_PASSWORD }}
-            PG_SSLMODE=verify-full
-            DOSSIER_BUCKET=pharma-dossier
-            S3_ENDPOINT=https://storage.yandexcloud.net
-            PHARMA_EDGE_API_KEY=${{ secrets.PHARMA_EDGE_API_KEY }}
-            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          network-id: ${{ steps.env.outputs.network_id }}
+          environment: ${{ steps.env.outputs.environment }}
+          secrets: ${{ steps.env.outputs.secrets }}
 
   update-gateway:
     needs: [detect-changes, deploy]
@@ -98,6 +108,8 @@ jobs:
           yc config set cloud-id "${{ secrets.YC_CLOUD_ID }}"
           yc config set folder-id "${{ secrets.YC_FOLDER_ID }}"
 
+      # Updates the spec of an existing gateway only. Creating it and the CNAME
+      # is a one-time local step in SinopticsAI/pharma_env.
       - name: Render and update pharma-edge-api-gateway
         env:
           CUSTOM_DOMAIN: pharma-edge.sinoptics.ru
@@ -111,7 +123,7 @@ jobs:
               | jq -r '.[] | select(.name=="pharma-edge-api-gateway") | .id')
           fi
           if [ -z "$GW_ID" ]; then
-            echo "pharma-edge-api-gateway not found; run infra/scripts/deploy-gateway.ps1 once"
+            echo "pharma-edge-api-gateway not found; run deploy-gateway.ps1 in SinopticsAI/pharma_env once"
             exit 1
           fi
           yc serverless api-gateway update --id "$GW_ID" --spec infra/gateway/openapi.yaml

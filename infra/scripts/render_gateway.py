@@ -1,4 +1,8 @@
-"""Fill infra/gateway/openapi.template.yaml placeholders from env or yc."""
+"""Fill infra/gateway/openapi.template.yaml placeholders from env or yc.
+
+Canon: SinopticsAI/pharma_env. Keep this copy in sync: CD here re-renders the
+spec of an existing gateway, but the gateway itself is created from that repo.
+"""
 
 from __future__ import annotations
 
@@ -30,6 +34,25 @@ PLACEHOLDERS = {
     # First container integration in this gateway: the Mastra agent.
     "__CONTAINER_AGENT__": ("CONTAINER_AGENT_ID", "pharma-agent"),
 }
+
+# The gateway goes up before the agent container exists (step 4 of the first
+# rollout, agent is step 7). An unresolved container id would be rejected by
+# yc, so /chat/* answers 503 until the id is known and the gateway is redeployed.
+AGENT_CONTAINER_BLOCK = """    agent:
+      type: serverless_containers
+      container_id: __CONTAINER_AGENT__
+      service_account_id: __SA_API_GATEWAY_ID__
+"""
+
+AGENT_STUB_BLOCK = """    agent:
+      type: dummy
+      content:
+        "*": '{"error":"agent_container_not_deployed"}'
+      http_code: 503
+      http_headers:
+        Content-Type: application/json
+        Access-Control-Allow-Origin: "*"
+"""
 
 
 def _read_account_env() -> dict[str, str]:
@@ -75,13 +98,25 @@ def resolve(token: str, env_key: str, fallback: str, account: dict[str, str]) ->
 def main() -> None:
     account = _read_account_env()
     text = TEMPLATE.read_text(encoding="utf-8")
+
+    agent_env, agent_fallback = PLACEHOLDERS["__CONTAINER_AGENT__"]
+    agent = resolve("__CONTAINER_AGENT__", agent_env, agent_fallback, account)
+    if agent == agent_fallback:
+        if AGENT_CONTAINER_BLOCK not in text:
+            raise SystemExit("agent integration block not found in the template")
+        text = text.replace(AGENT_CONTAINER_BLOCK, AGENT_STUB_BLOCK)
+        print("WARNING: CONTAINER_AGENT_ID is empty; /chat/* will answer 503")
+
     missing = []
     for token, (env_key, fallback) in PLACEHOLDERS.items():
+        if token == "__CONTAINER_AGENT__":
+            continue
         value = resolve(token, env_key, fallback, account)
-        if token.startswith("__FN_") or token in ("__SA_API_GATEWAY_ID__", "__CONTAINER_AGENT__"):
-            if not value or value.startswith("pharma-edge-") or value == "pharma-agent":
+        if token.startswith("__FN_") or token == "__SA_API_GATEWAY_ID__":
+            if not value or value.startswith("pharma-edge-"):
                 missing.append(env_key)
         text = text.replace(token, value)
+    text = text.replace("__CONTAINER_AGENT__", agent)
     OUTPUT.write_text(text, encoding="utf-8")
     print(f"wrote {OUTPUT}")
     if missing:

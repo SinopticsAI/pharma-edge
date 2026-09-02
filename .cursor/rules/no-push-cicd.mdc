@@ -1,0 +1,13 @@
+---
+description: Владелец сам делает git push и CI/CD; агент не пушит и не запускает пайплайны
+alwaysApply: true
+---
+
+# Push и CI/CD — не агент
+
+Источник: [`spec/deploy.md`](../../spec/deploy.md) § «Кто пушит и гоняет CI/CD».
+
+- Не делать `git push` и не пушить ветки/теги.
+- Не запускать GitHub Actions: `gh workflow run`, `workflow_dispatch`, `gh api` на Actions.
+- Не деплоить в preprod/prod из сессии агента «чтобы проверить CI».
+- Когда код готов — остановиться и сказать, что владелец может пушить сам.

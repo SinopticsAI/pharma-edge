@@ -1,3 +1,7 @@
+# Canon: SinopticsAI/pharma_env. Keep this copy in sync or run that repo.
+# The gateway and the CNAME are created there; here it is a convenience for
+# re-rendering the spec after a function deploy.
+
 . (Join-Path $PSScriptRoot "_common.ps1")
 $folder = Get-AccountValue "YC_FOLDER_ID" "b1g07nbj3q7ccru38on0"
 $name = Get-AccountValue "API_GATEWAY_NAME" "pharma-edge-api-gateway"

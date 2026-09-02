@@ -1,3 +1,4 @@
+# Canon: SinopticsAI/pharma-postgracesql. Keep this copy in sync or run that repo.
 # Apply the cabinet schema to Managed PostgreSQL.
 #
 # The cluster has no public host, so this runs from inside the network: a VM in

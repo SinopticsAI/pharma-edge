@@ -7,8 +7,9 @@
 `plane_case_items`, `plane_agent_reports`) — это изолированное эфемерное
 состояние, которое ни с чем не соединяется джойнами.
 
-Канон DDL — [`sql/01_cabinet.sql`](../sql/01_cabinet.sql). Применяется
-скриптом [`infra/scripts/apply-sql.ps1`](../infra/scripts/apply-sql.ps1).
+Канон DDL — [`SinopticsAI/pharma-postgracesql`](https://github.com/SinopticsAI/pharma-postgracesql)
+([`sql/01_cabinet.sql`](https://github.com/SinopticsAI/pharma-postgracesql/blob/main/sql/01_cabinet.sql)).
+Копия в этом репозитории — только чтобы функции видели схему рядом с кодом.
 
 ## Почему не YDB
 

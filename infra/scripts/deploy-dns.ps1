@@ -1,3 +1,6 @@
+# Canon: SinopticsAI/pharma_env. Keep this copy in sync or run that repo.
+# The zone is shared with orders and verify: one record, no bulk replace.
+
 . (Join-Path $PSScriptRoot "_common.ps1")
 $zone = Get-AccountValue "DNS_ZONE_SINOPTICS_RU_ID" "dns5ia445jp8cqmbnnfk"
 $custom = Get-AccountValue "CUSTOM_DOMAIN" "pharma-edge.sinoptics.ru"

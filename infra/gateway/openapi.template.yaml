@@ -1,3 +1,6 @@
+# Canon: SinopticsAI/pharma_env. Keep this copy in sync or render from that repo.
+# CD here only updates the spec of an existing gateway; creating the gateway,
+# attaching the domain and the CNAME all live in pharma_env.
 openapi: 3.0.0
 info:
   title: pharma-edge

@@ -86,6 +86,8 @@ scr/
   calendar_tick/
 ```
 
-OpenAPI шлюза — [`infra/gateway/openapi.template.yaml`](../infra/gateway/openapi.template.yaml).
+OpenAPI шлюза — [`infra/gateway/openapi.template.yaml`](../infra/gateway/openapi.template.yaml),
+копия канона из [`pharma_env`](https://github.com/SinopticsAI/pharma_env).
 Там же первая контейнерная интеграция: `/chat/{agentId}` уходит в контейнер
-Mastra через `serverless_containers`.
+Mastra через `serverless_containers`. Пока контейнера нет, рендер подставляет
+заглушку `503`, и шлюз поднимается без агента.

@@ -4,6 +4,14 @@
 
 Terraform не используем.
 
+## Кто пушит и гоняет CI/CD
+
+**Push в remote и прогон GitHub Actions делает владелец репозитория сам.** Агент этого не делает.
+
+Агент пишет код, workflow YAML и локальные скрипты, затем останавливается и говорит, что можно пушить. Не делает `git push`, не запускает workflow (`gh workflow run`, `workflow_dispatch`, `gh api` на Actions) и не деплоит в preprod/prod из своей сессии — даже «чтобы проверить CI».
+
+Локальный подъём по [`infra/README.md`](../infra/README.md) — только если владелец явно попросил.
+
 ## Целевой каталог
 
 | Параметр | Значение |
@@ -34,10 +42,13 @@ Settings → Environments:
 | `YC_SA_PROD_ID` | runtime SA prod (заполнить после provision) |
 | `PHARMA_PLANE_BASE_URL` | публичный URL `api-facade`; cutover / откат |
 | `PHARMA_PLANE_API_KEY` | `X-API-Key` на facade; хранить также в Lockbox Plane |
-| `PG_HOST` | `c-<cluster>.rw.mdb.yandexcloud.net` |
+| `PG_HOST` | `c-c9qbferg3hcqjnqkghcp.rw.mdb.yandexcloud.net` — не секрет; CD подставит сам, если пусто |
 | `PG_PORT` | `6432` — пулер Odyssey, не 5432 |
-| `VPC_NETWORK_ID` | сеть кластера; без неё функция до пулера не дотянется |
-| `LOCKBOX_PG_ID` | секрет с паролями `pharma_cabinet` и `pharma_agent` |
+| `VPC_NETWORK_ID` | сеть кластера (`enpp5oe8dlepbkjm52rl`); без неё функция до пулера не дотянется |
+| `LOCKBOX_PG_ID` | секрет `pharma-edge-pg`, ключ `pharma_cabinet_password`. Пароль в plaintext `PG_CABINET_PASSWORD` — только запасной путь |
+| `LOCKBOX_HTTP_ID` | секрет `pharma-edge-http`, ключ `PHARMA_EDGE_API_KEY` |
+| `LOCKBOX_S3_ID` | секрет `pharma-edge-s3` для presigned upload |
+| `PG_CABINET_PASSWORD` | не класть, если есть Lockbox. Пустое значение YC отклоняет как `INVALID_ARGUMENT` |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Object Storage досье (или читать из Lockbox в CD) |
 
 Не копировать из Logos: `YOOKASSA_*`, `BITRIX_*`, `AWSCLOUD_API_BASE_URL`.
@@ -55,6 +66,8 @@ URL очередей YMQ предпочтительно читать из Lockbo
 | db | изменения в `sql/**` | `psql` apply изнутри сети кластера |
 
 При правке самих workflow-файлов — полный деплой, `max-parallel: 3` из‑за квот `serverless.concurrentFolderOperations`.
+
+Каталог общий с Logos: в нём уже ~40 функций. Edge нужно ещё 14 имён `pharma-edge-*`. Пока квота `serverless.functions.count` не поднята хотя бы до 48, `Create` падает с `RESOURCE_EXHAUSTED`. Пустые `PG_HOST` / `PG_PASSWORD` в env CD не передаём — YC отвечает `INVALID_ARGUMENT`. Пароль кабинета создаёт [`pharma-postgracesql`](https://github.com/SinopticsAI/pharma-postgracesql) (`ensure-postgres.ps1` → Lockbox `pharma-edge-pg`).
 
 Поток:
 
@@ -80,14 +93,17 @@ yc config profile activate pharma-edge
 Отдельный шлюз `pharma-edge-api-gateway` на `pharma-edge.sinoptics.ru`. Статический `pharma-api-gateway` не трогаем.
 
 ```powershell
+# PostgreSQL: репозиторий pharma-postgracesql (discover → ensure-postgres → apply-sql)
 .\infra\scripts\discover.ps1
 .\infra\scripts\provision.ps1
-.\infra\scripts\ensure-ydb.ps1
-.\infra\scripts\apply-sql.ps1
 .\infra\scripts\deploy-function.ps1
-.\infra\scripts\deploy-gateway.ps1
-.\infra\scripts\deploy-dns.ps1
+# шлюз и DNS: репозиторий pharma_env (discover → deploy-gateway → deploy-dns)
 ```
+
+Шлюз создаётся из [`pharma_env`](https://github.com/SinopticsAI/pharma_env) и там же
+живёт канон `openapi.template.yaml`. CD этого репозитория только перерисовывает
+спеку **существующего** шлюза при изменении `scr/**`; новый шлюз и запись DNS
+он не создаёт и падает с явным сообщением, если шлюза нет.
 
 `PHARMA_PLANE_BASE_URL` не обязателен до волны 1b.
 
