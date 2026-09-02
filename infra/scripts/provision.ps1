@@ -23,11 +23,12 @@ function Ensure-ServiceAccount {
 
 $funcId = Ensure-ServiceAccount -Name "pharma-edge-sa-func" -AccountKey "SA_FUNC_ID" -Roles @(
     "functions.functionInvoker",
-    "ydb.editor",
     "ymq.writer",
     "ymq.reader",
     "storage.editor",
-    "lockbox.payloadViewer"
+    "lockbox.payloadViewer",
+    # Functions run inside the cluster network to reach the pooler.
+    "vpc.user"
 )
 $gwSa = Ensure-ServiceAccount -Name "pharma-edge-sa-gateway" -AccountKey "SA_API_GATEWAY_ID" -Roles @(
     "functions.functionInvoker",
@@ -40,7 +41,8 @@ $ciSa = Ensure-ServiceAccount -Name "pharma-edge-sa-ci" -AccountKey "SA_CI_ID" -
     "storage.editor",
     "lockbox.editor",
     "lockbox.payloadViewer",
-    "ydb.editor",
+    "mdb.viewer",
+    "vpc.user",
     "api-gateway.editor"
 )
 Write-Host "SA func=$funcId gateway=$gwSa ci=$ciSa"

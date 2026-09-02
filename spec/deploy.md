@@ -34,8 +34,10 @@ Settings → Environments:
 | `YC_SA_PROD_ID` | runtime SA prod (заполнить после provision) |
 | `PHARMA_PLANE_BASE_URL` | публичный URL `api-facade`; cutover / откат |
 | `PHARMA_PLANE_API_KEY` | `X-API-Key` на facade; хранить также в Lockbox Plane |
-| `YDB_ENDPOINT` | Document API endpoint |
-| `YDB_DATABASE` | путь БД |
+| `PG_HOST` | `c-<cluster>.rw.mdb.yandexcloud.net` |
+| `PG_PORT` | `6432` — пулер Odyssey, не 5432 |
+| `VPC_NETWORK_ID` | сеть кластера; без неё функция до пулера не дотянется |
+| `LOCKBOX_PG_ID` | секрет с паролями `pharma_cabinet` и `pharma_agent` |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Object Storage досье (или читать из Lockbox в CD) |
 
 Не копировать из Logos: `YOOKASSA_*`, `BITRIX_*`, `AWSCLOUD_API_BASE_URL`.
@@ -50,7 +52,7 @@ URL очередей YMQ предпочтительно читать из Lockbo
 | CT | PR в `main` | валидация без `yc deploy` (`compileall`, структура) |
 | CD | push в `main`, release, dispatch | деплой изменённых функций в prod |
 | detect-changes | reusable | matrix по `git diff` |
-| ydb | изменения в `sql/**` | `ydb-cli` apply |
+| db | изменения в `sql/**` | `psql` apply изнутри сети кластера |
 
 При правке самих workflow-файлов — полный деплой, `max-parallel: 3` из‑за квот `serverless.concurrentFolderOperations`.
 

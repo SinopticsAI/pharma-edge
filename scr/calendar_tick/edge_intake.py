@@ -1,0 +1,642 @@
+"""Deterministic intake rules that must not be delegated to a model.
+
+Dialogue policy lives in Mastra. What stays here is validation: how an
+extraction becomes a draft field, what makes a profile sufficient, which slots
+a company owes, and what the node map looks like for a chosen variant.
+
+Draft fields carry provenance, never bare values:
+    {"legalName": {"value": "...", "source": "business-license p.1",
+                   "confidence": 0.94}}
+A card without a source cannot be checked, and checking it is the whole point.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Optional
+
+# ------------------------------------------------------- extraction to draft --
+
+_ORG_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "legalName": ("company_name", "legal_name", "name", "entity_name"),
+    "legalNameEn": ("company_name_en", "name_en", "english_name"),
+    "registrationNumber": (
+        "unified_social_credit_code",
+        "uscc",
+        "registration_number",
+        "credit_code",
+        "license_number",
+    ),
+    "legalRepresentative": ("legal_representative", "representative", "legal_person"),
+    "address": ("address", "registered_address", "domicile"),
+    "establishedOn": ("establishment_date", "established_on", "registration_date"),
+    "businessScope": ("business_scope", "scope"),
+    "capital": ("registered_capital", "capital"),
+}
+
+_PRODUCT_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "name": ("product_name", "device_name", "name", "trade_name"),
+    "models": ("models", "model", "model_list", "variants"),
+    "intendedUse": ("intended_use", "indications", "purpose"),
+    "manufacturer": ("manufacturer", "producer", "company_name"),
+    "sites": ("sites", "manufacturing_sites", "production_sites"),
+    "composition": ("composition", "materials", "contact_materials"),
+    "measuring": ("measuring_function", "measuring_instrument"),
+    "software": ("software", "firmware"),
+    "sterile": ("sterile", "sterilization"),
+    "nmpaNumber": ("certificate_number", "nmpa_number", "registration_number"),
+}
+
+
+def _flatten(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        parts = [_flatten(item) for item in value]
+        return ", ".join(part for part in parts if part)
+    if isinstance(value, dict):
+        for key in ("value", "ru", "en", "zh", "name"):
+            if value.get(key):
+                return _flatten(value[key])
+        return ""
+    return str(value)
+
+
+def _pick(extracted: dict[str, Any], aliases: tuple[str, ...]) -> tuple[str, float]:
+    lowered = {str(k).strip().lower(): v for k, v in extracted.items()}
+    for alias in aliases:
+        if alias in lowered:
+            raw = lowered[alias]
+            text = _flatten(raw)
+            if not text:
+                continue
+            confidence = 0.0
+            if isinstance(raw, dict):
+                try:
+                    confidence = float(raw.get("confidence") or 0.0)
+                except (TypeError, ValueError):
+                    confidence = 0.0
+            return text, confidence
+    return "", 0.0
+
+
+def extraction_of(parced: Any) -> dict[str, Any]:
+    """Plane stores {case_id, item_id, item_type, extracted, status}."""
+    if not isinstance(parced, dict):
+        return {}
+    inner = parced.get("extracted")
+    if isinstance(inner, dict):
+        return inner
+    return {k: v for k, v in parced.items() if k not in ("case_id", "item_id", "status")}
+
+
+def draft_value(draft: dict[str, Any], field: str) -> str:
+    """Reads a draft field whether it carries provenance or is a bare value."""
+    entry = (draft or {}).get(field)
+    if isinstance(entry, dict):
+        return str(entry.get("value") or "").strip()
+    return str(entry or "").strip()
+
+
+def plain_profile(draft: dict[str, Any]) -> dict[str, str]:
+    """Approved profile keeps values only; provenance stays on the draft."""
+    return {field: draft_value(draft, field) for field in (draft or {}) if draft_value(draft, field)}
+
+
+def _merge(
+    draft: dict[str, Any],
+    parced: Any,
+    aliases: dict[str, tuple[str, ...]],
+    source: str,
+) -> dict[str, Any]:
+    extracted = extraction_of(parced)
+    if not extracted:
+        return dict(draft or {})
+    out = dict(draft or {})
+    for field, names in aliases.items():
+        # Later documents fill blanks; they never overwrite what a human saw.
+        if draft_value(out, field):
+            continue
+        value, confidence = _pick(extracted, names)
+        if value:
+            out[field] = {
+                "value": value,
+                "source": source,
+                "confidence": confidence or None,
+            }
+    return out
+
+
+def merge_org_draft(draft: dict[str, Any], parced: Any, source: str = "") -> dict[str, Any]:
+    return _merge(draft, parced, _ORG_FIELD_ALIASES, source or "document")
+
+
+def merge_product_draft(draft: dict[str, Any], parced: Any, source: str = "") -> dict[str, Any]:
+    return _merge(draft, parced, _PRODUCT_FIELD_ALIASES, source or "document")
+
+
+def missing_org_fields(draft: dict[str, Any]) -> list[str]:
+    return [f for f in ("legalName", "registrationNumber") if not draft_value(draft, f)]
+
+
+def missing_product_fields(draft: dict[str, Any]) -> list[str]:
+    """Without these the agent cannot classify, so it asks for more documents."""
+    return [f for f in ("name", "intendedUse") if not draft_value(draft, f)]
+
+
+def product_completeness(draft: dict[str, Any]) -> int:
+    """Variants are offered at 100% only, so this number is a gate, not decor."""
+    wanted = ("name", "intendedUse", "models", "manufacturer", "composition", "sites")
+    filled = sum(1 for field in wanted if draft_value(draft, field))
+    return int(round(filled * 100 / len(wanted)))
+
+
+def profile_is_sufficient(profile: Any) -> bool:
+    """Enough company data to open a product. Not enough to file."""
+    if not isinstance(profile, dict):
+        return False
+    for key in ("legalName", "registrationNumber"):
+        entry = profile.get(key)
+        value = entry.get("value") if isinstance(entry, dict) else entry
+        if not str(value or "").strip():
+            return False
+    return True
+
+
+def product_intake_blocked(org_status: str) -> bool:
+    """A product needs an approved company profile, not a complete one."""
+    return org_status != "profile_approved"
+
+
+# ------------------------------------------------------------- company slots --
+
+def default_org_slots() -> list[dict[str, Any]]:
+    """п. 87 Правил № 1684. `section` drives the progress panel of the dialog."""
+    return [
+        {
+            "key": "business-license",
+            "section": "identity",
+            "title": {
+                "ru": "Свидетельство о регистрации юридического лица, 营业执照",
+                "en": "Legal entity registration certificate, 营业执照",
+                "zh": "法人登记证明、营业执照",
+            },
+            "needs_apostille": True,
+            "needs_translation": True,
+        },
+        {
+            "key": "company-registry",
+            "section": "identity",
+            "title": {
+                "ru": "Сверка с государственным реестром КНР",
+                "en": "Match against the Chinese state registry",
+                "zh": "与中国国家登记簿核对",
+            },
+        },
+        {
+            "key": "poa-upp",
+            "section": "authority",
+            "title": {
+                "ru": "Доверенность или акт назначения уполномоченного представителя",
+                "en": "Power of attorney appointing the authorized representative",
+                "zh": "授权委托书或授权代表任命书",
+            },
+            "needs_notary": True,
+            "needs_apostille": True,
+            "needs_translation": True,
+        },
+        {
+            "key": "signatory",
+            "section": "authority",
+            "title": {
+                "ru": "Доказательства полномочий подписанта, 法定代表人",
+                "en": "Evidence of the signatory authority, 法定代表人",
+                "zh": "签署人权限证明、法定代表人",
+            },
+            "needs_apostille": True,
+            "needs_translation": True,
+        },
+        {
+            "key": "site-docs",
+            "section": "documents",
+            "title": {
+                "ru": "Документы на производственную площадку",
+                "en": "Manufacturing site documents",
+                "zh": "生产场地文件",
+            },
+            "needs_notary": True,
+            "needs_apostille": True,
+            "needs_translation": True,
+        },
+        {
+            "key": "iso-13485",
+            "section": "documents",
+            "title": {
+                "ru": "ISO 13485 и отчёт инспекции к нему",
+                "en": "ISO 13485 and the related inspection report",
+                "zh": "ISO 13485 及其检查报告",
+            },
+            "needs_notary": True,
+            "needs_apostille": True,
+            "needs_translation": True,
+        },
+        {
+            "key": "bank-account",
+            "section": "banking",
+            "title": {
+                "ru": "Банковские реквизиты для расчётов в юанях",
+                "en": "Bank details for settlements in RMB",
+                "zh": "人民币结算银行信息",
+            },
+        },
+        {
+            "key": "risk-check",
+            "section": "risk",
+            "title": {
+                "ru": "Проверка рисков компании",
+                "en": "Company risk check",
+                "zh": "公司风险核查",
+            },
+        },
+        {
+            "key": "trademark",
+            "section": "documents",
+            "title": {
+                "ru": "Право на товарный знак",
+                "en": "Trademark right",
+                "zh": "商标权",
+            },
+            "needs_apostille": True,
+            "optional": True,
+        },
+    ]
+
+
+def org_completeness(slots: list[dict[str, Any]]) -> dict[str, Any]:
+    """Percentage plus a breakdown by section, which is what the panel shows."""
+    required = [slot for slot in slots if not slot.get("optional")]
+    filled = [slot for slot in required if slot.get("status") == "filled"]
+    sections: dict[str, dict[str, int]] = {}
+    for slot in required:
+        key = str(slot.get("section") or "documents")
+        bucket = sections.setdefault(key, {"filled": 0, "total": 0})
+        bucket["total"] += 1
+        if slot.get("status") == "filled":
+            bucket["filled"] += 1
+    percent = int(round(len(filled) * 100 / len(required))) if required else 0
+    return {
+        "filled": len(filled),
+        "total": len(required),
+        "percent": percent,
+        "ready": bool(required) and len(filled) == len(required),
+        "sections": [
+            {"key": key, "filled": value["filled"], "total": value["total"]}
+            for key, value in sections.items()
+        ],
+    }
+
+
+# ---------------------------------------------------- classification variants --
+
+BUDGET_DISCLAIMER = {
+    "ru": "Рамка планирования, не оферта. Решение о регистрации принимает регулятор.",
+    "en": "A planning frame, not an offer. The registration decision is the regulator's.",
+    "zh": "仅为规划参考，不是要约。注册决定由监管机关作出。",
+}
+
+
+def _budget(subscription: int, handling: int, pass_through: int) -> dict[str, Any]:
+    """Three baskets in RMB. There is never a single 'total to pay' line."""
+    return {
+        "currency": "RMB",
+        "baskets": [
+            {"key": "subscription", "amount": subscription},
+            {"key": "handling", "amount": handling},
+            {"key": "pass-through", "amount": pass_through},
+        ],
+        "disclaimer": dict(BUDGET_DISCLAIMER),
+    }
+
+
+def _l10n(ru: str, en: str, zh: str) -> dict[str, str]:
+    return {"ru": ru, "en": en, "zh": zh}
+
+
+_FALLBACK_VARIANTS: dict[str, list[dict[str, Any]]] = {
+    "device": [
+        {
+            "variant_type": "recommended",
+            "kind": "device",
+            "track": "pp1684",
+            "risk_class": "2b",
+            "title": _l10n(
+                "Национальный трек, ПП РФ № 1684",
+                "National track, RF Decree No. 1684",
+                "国家路径，俄联邦第 1684 号决议",
+            ),
+            "summary": _l10n(
+                "Технические испытания, клиническая оценка, инспекция производства по ПП 135, заявление 630782.",
+                "Technical tests, clinical evaluation, manufacturing inspection under Decree 135, application 630782.",
+                "技术检测、临床评价、按第 135 号决议进行生产检查、630782 申请。",
+            ),
+            "pros": [
+                _l10n("Бессрочное удостоверение", "Open-ended authorization", "注册证无期限"),
+                _l10n("Досье конвертируемо в ЕАЭС", "Dossier convertible to EAEU", "档案可转为欧亚经济联盟"),
+            ],
+            "cons": [
+                _l10n("Действует только в России", "Valid in Russia only", "仅在俄罗斯有效"),
+                _l10n("Класс 2б требует инспекции", "Class 2b requires an inspection", "2b 类需要检查"),
+            ],
+            "budget": _budget(4150, 12800, 32433),
+            "cycle_months": [12, 16],
+        },
+        {
+            "variant_type": "alternative",
+            "kind": "device",
+            "track": "eaeu46",
+            "risk_class": "2b",
+            "title": _l10n(
+                "Союзный трек, Решение № 46",
+                "Union track, Decision No. 46",
+                "联盟路径，第 46 号决定",
+            ),
+            "summary": _l10n(
+                "Одно удостоверение на государства союза, отдельная услуга 613264, дольше и дороже.",
+                "One authorization across the Union, separate service 613264, longer and costlier.",
+                "一份注册证覆盖联盟国家，单独服务 613264，周期更长、成本更高。",
+            ),
+            "pros": [_l10n("Признание в государствах союза", "Recognition across member states", "成员国互认")],
+            "cons": [_l10n("Дольше и дороже", "Longer and costlier", "周期更长、成本更高")],
+            "budget": _budget(4150, 16400, 41200),
+            "cycle_months": [14, 20],
+        },
+    ],
+    "drug": [
+        {
+            "variant_type": "recommended",
+            "kind": "drug",
+            "track": "eaeu78",
+            "risk_class": "1",
+            "title": _l10n(
+                "Решение № 78, РФ как референтное государство",
+                "Decision No. 78, Russia as the reference state",
+                "第 78 号决定，以俄罗斯为参照国",
+            ),
+            "summary": _l10n(
+                "Досье ОТД, контроль качества, биоэквивалентность, инспекция площадки, экспертиза до 140 рабочих дней.",
+                "eCTD dossier, quality control, bioequivalence, site inspection, review up to 140 working days.",
+                "ОТД 档案、质量控制、生物等效性、场地检查，审评最长 140 个工作日。",
+            ),
+            "budget": _budget(4150, 26000, 96000),
+            "cycle_months": [18, 26],
+        },
+    ],
+}
+
+
+def fallback_variants(kind: str) -> list[dict[str, Any]]:
+    """Used when the qualify agent has not answered or returned nothing usable."""
+    key = kind if kind in _FALLBACK_VARIANTS else "device"
+    return [dict(item) for item in _FALLBACK_VARIANTS[key]]
+
+
+def variants_from_report(report: Any, kind: str) -> tuple[list[dict[str, Any]], bool]:
+    """Reads the qualify agent report. Returns (variants, escalate)."""
+    if not isinstance(report, dict):
+        return fallback_variants(kind), False
+
+    escalate = False
+    for check in report.get("checks") or []:
+        if not isinstance(check, dict):
+            continue
+        if str(check.get("name") or "").strip() == "escalation" and check.get("result") == "fail":
+            escalate = True
+
+    raw = report.get("variants")
+    if not isinstance(raw, list) or not raw:
+        return fallback_variants(kind), escalate
+
+    out: list[dict[str, Any]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        variant_kind = str(entry.get("kind") or kind or "device")
+        base = fallback_variants(variant_kind)[0]
+        variant_type = str(entry.get("variant_type") or entry.get("variantType") or "alternative")
+        if variant_type not in ("recommended", "alternative", "forbidden"):
+            variant_type = "alternative"
+        out.append(
+            {
+                "variant_type": variant_type,
+                "kind": variant_kind,
+                "track": str(entry.get("track") or base["track"]),
+                "risk_class": str(entry.get("risk_class") or entry.get("riskClass") or base["risk_class"]),
+                "title": entry.get("title") or base["title"],
+                "summary": entry.get("summary") or base["summary"],
+                "pros": entry.get("pros") or [],
+                "cons": entry.get("cons") or [],
+                "reason": entry.get("reason"),
+                "budget": entry.get("budget") or base["budget"],
+                "distribution": entry.get("distribution") or {},
+                "cycle_months": entry.get("cycle_months") or entry.get("cycleMonths") or base["cycle_months"],
+            }
+        )
+    return (out or fallback_variants(kind)), escalate
+
+
+def guess_kind(draft: dict[str, Any]) -> str:
+    """Rough hint only. The agent drafts, the specialist confirms."""
+    haystack = " ".join(
+        draft_value(draft, field) for field in ("name", "intendedUse", "composition")
+    ).lower()
+    drug_markers = ("мг", "таблет", "капсул", "раствор для инфузий", "mg", "tablet", "capsule", "infusion")
+    if any(marker in haystack for marker in drug_markers):
+        return "drug"
+    return "device"
+
+
+# -------------------------------------------------------------- the node map --
+
+def default_node_map(
+    kind: str = "device",
+    track: str = "pp1684",
+    risk_class: str = "2b",
+    measuring_instrument: bool = False,
+) -> list[dict[str, Any]]:
+    """Thirteen nodes, M0..M12.
+
+    Everything after filing is emitted with status 'later' on purpose: the
+    client should see a 12-16 month horizon from day one, not only the dossier.
+    Inspection depends on the class, so M7 may be dropped.
+    """
+    inspection_needed = risk_class in ("2b", "3") or kind == "drug"
+
+    nodes: list[dict[str, Any]] = [
+        {
+            "code": "M0",
+            "title": _l10n("Классификация и процедура", "Classification and procedure", "定性与程序"),
+            "owner": "us",
+            "status": "done",
+            "due_hint": _l10n("неделя 1", "week 1", "第 1 周"),
+            "blocked_by": [],
+        },
+        {
+            "code": "M1",
+            "title": _l10n("Договор и мандат УПП", "Contract and authorized representative", "合同与授权代表"),
+            "owner": "us",
+            "status": "planned",
+            "due_hint": _l10n("недели 2–6", "weeks 2-6", "第 2–6 周"),
+            "blocked_by": ["M0"],
+            "note": _l10n(
+                "Доверенность закреплена за вами, смена УПП — по требованию.",
+                "The power of attorney stays yours; the representative can be changed on request.",
+                "委托书归您所有，可按要求更换授权代表。",
+            ),
+        },
+        {
+            "code": "M2",
+            "title": _l10n("Досье собрано", "Dossier assembled", "档案齐备"),
+            "owner": "us",
+            "status": "planned",
+            "due_hint": _l10n("месяцы 2–4", "months 2-4", "第 2–4 个月"),
+            "blocked_by": ["M1"],
+            "note": _l10n("Структура по п. 65 ПП 1684.", "Structure per clause 65 of Decree 1684.", "结构依第 1684 号决议第 65 条。"),
+        },
+        {
+            "code": "M3",
+            "title": _l10n("Перевод и апостиль", "Translation and apostille", "翻译与附加证明书"),
+            "owner": "us",
+            "status": "planned",
+            "due_hint": _l10n("месяцы 2–3", "months 2-3", "第 2–3 个月"),
+            "blocked_by": ["M1"],
+        },
+        {
+            "code": "M4",
+            "title": _l10n("Образцы в Россию", "Samples to Russia", "样品运抵俄罗斯"),
+            "owner": "contractor",
+            "status": "planned",
+            "due_hint": _l10n("месяц 3", "month 3", "第 3 个月"),
+            "blocked_by": ["M2"],
+            "note": _l10n("Уведомление 201н и таможня.", "Notification 201n and customs.", "201н 通知与海关。"),
+        },
+        {
+            "code": "M5",
+            "title": _l10n("Испытания", "Testing", "检测"),
+            "owner": "contractor",
+            "status": "planned",
+            "due_hint": _l10n("месяцы 4–7", "months 4-7", "第 4–7 个月"),
+            "blocked_by": ["M4"],
+            "note": _l10n(
+                "Аккредитованная лаборатория РФ. Отчёты NMPA и CE её не заменяют.",
+                "An accredited Russian laboratory. NMPA and CE reports do not replace it.",
+                "俄罗斯认可实验室。NMPA 和 CE 报告不能替代。",
+            ),
+        },
+        {
+            "code": "M6",
+            "title": _l10n("Клиническая оценка", "Clinical evaluation", "临床评价"),
+            "owner": "contractor",
+            "status": "planned",
+            "due_hint": _l10n("месяцы 5–8", "months 5-8", "第 5–8 个月"),
+            "blocked_by": ["M5"],
+        },
+    ]
+
+    if inspection_needed:
+        nodes.append(
+            {
+                "code": "M7",
+                "title": _l10n("Инспекция производства", "Manufacturing inspection", "生产检查"),
+                "owner": "gov",
+                "status": "later",
+                "due_hint": _l10n("месяц 8", "month 8", "第 8 个月"),
+                "blocked_by": ["M6"],
+                "note": _l10n("ПП РФ № 135, выезд на площадку.", "Decree No. 135, an on-site visit.", "第 135 号决议，现场检查。"),
+            }
+        )
+
+    filing_blockers = ["M6"] + (["M7"] if inspection_needed else [])
+    nodes.extend(
+        [
+            {
+                "code": "M8",
+                "title": _l10n("Подача и экспертиза", "Filing and review", "申报与审评"),
+                "owner": "gov",
+                "status": "later",
+                "due_hint": _l10n("месяцы 9–13", "months 9-13", "第 9–13 个月"),
+                "blocked_by": filing_blockers,
+            },
+            {
+                "code": "M9",
+                "title": _l10n("Русская маркировка", "Russian labelling", "俄文标识"),
+                "owner": "us",
+                "status": "later",
+                "due_hint": _l10n("2 недели", "2 weeks", "2 周"),
+                "blocked_by": ["M8"],
+            },
+            {
+                "code": "M10",
+                "title": _l10n("Честный ЗНАК", "Chestny Znak", "诚实标志"),
+                "owner": "us",
+                "status": "later",
+                "due_hint": _l10n("1 неделя", "1 week", "1 周"),
+                "blocked_by": ["M9"],
+                "note": _l10n(
+                    "Проверка по актуальной редакции перечня, а не по памяти.",
+                    "Checked against the current list, not from memory.",
+                    "按现行清单核对，而非凭记忆。",
+                ),
+            },
+            {
+                "code": "M11",
+                "title": _l10n("Мониторинг безопасности", "Safety monitoring", "安全监测"),
+                "owner": "us",
+                "status": "later",
+                "due_hint": _l10n("2 недели", "2 weeks", "2 周"),
+                "blocked_by": ["M8"],
+                "note": _l10n("Приказ № 1113н.", "Order No. 1113n.", "第 1113н 号令。"),
+            },
+            {
+                "code": "M12",
+                "title": _l10n("Первая легальная продажа", "First legal sale", "首次合法销售"),
+                "owner": "you",
+                "status": "goal",
+                "due_hint": _l10n("месяцы 13–14", "months 13-14", "第 13–14 个月"),
+                "blocked_by": ["M9", "M10", "M11"],
+                "note": _l10n(
+                    "Метрика успеха, отдельная от выдачи удостоверения.",
+                    "The success metric, separate from the authorization being issued.",
+                    "成功指标，与注册证签发相区分。",
+                ),
+            },
+        ]
+    )
+
+    if measuring_instrument:
+        for node in nodes:
+            if node["code"] == "M5":
+                node["note"] = _l10n(
+                    "Плюс утверждение типа средства измерений по приказу № 257н.",
+                    "Plus measuring instrument type approval under order No. 257n.",
+                    "另需按第 257н 号令进行计量器具型式批准。",
+                )
+
+    for position, node in enumerate(nodes):
+        node["position"] = position
+    return nodes
+
+
+def critical_node(nodes: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """The one next action. The map and the task list must not disagree."""
+    for node in nodes:
+        if node.get("status") == "in_progress":
+            return node
+    for node in nodes:
+        if node.get("status") == "planned":
+            return node
+    return None

@@ -1,16 +1,21 @@
-"""Cloud Function: calendar_tick — daily timer, working-day anchors, proposals only."""
+"""Cloud Function: calendar_tick — daily timer, working-day anchors.
 
+Writes proposals, never facts. A deadline the machine computed is a suggestion
+until an operator confirms it with an artifact.
+"""
+
+import json
 from datetime import date, timedelta
 
 from common_log import get_request_id, json_response, log_structured
-from edge_domain import CALENDAR_ANCHORS, dumps_json, new_id
+from edge_domain import CALENDAR_ANCHORS, new_id
 from edge_http import is_http_event
-from edge_ydb import execute, get_ydb_pool
+from edge_pg import as_json, execute, query
 
 ROUTE = "TIMER calendar_tick"
 WATCH_STAGES = frozenset({"samples", "filing", "expertise", "registry"})
 
-# Official RF holidays 2026 (weekends handled separately).
+# Official RF holidays 2026; weekends are handled separately.
 RF_HOLIDAYS_2026 = frozenset(
     {
         date(2026, 1, 1),
@@ -31,33 +36,25 @@ RF_HOLIDAYS_2026 = frozenset(
 )
 
 SELECT_CASES = """
-SELECT case_id, current_stage, started_on, due_working_days
-FROM cases;
+SELECT case_id, account_id, current_stage, started_on, due_working_days
+FROM cases
+WHERE current_stage = ANY(%(stages)s)
 """
 
-SELECT_PROPOSALS = """
-DECLARE $case_id AS Utf8;
-SELECT kind, status FROM status_proposals VIEW idx_status_proposals_case
-WHERE case_id = $case_id;
+SELECT_PROPOSAL = """
+SELECT 1 FROM status_proposals
+WHERE case_id = %(case_id)s AND kind = %(kind)s AND status = 'proposed'
+LIMIT 1
 """
 
 INSERT_PROPOSAL = """
-DECLARE $proposal_id AS Utf8;
-DECLARE $case_id AS Utf8;
-DECLARE $kind AS Utf8;
-DECLARE $stage AS Utf8;
-DECLARE $text_json AS Utf8;
-UPSERT INTO status_proposals
-(proposal_id, case_id, kind, stage, text_json, status, created_at)
-VALUES
-($proposal_id, $case_id, $kind, $stage, $text_json, "proposed", CurrentUtcTimestamp());
+INSERT INTO status_proposals (proposal_id, account_id, case_id, kind, stage, text, status)
+VALUES (%(proposal_id)s, %(account_id)s, %(case_id)s, %(kind)s, %(stage)s, %(text)s, 'proposed')
 """
 
 UPDATE_DUE = """
-DECLARE $case_id AS Utf8;
-DECLARE $due_working_days AS Int32;
-UPDATE cases SET due_working_days = $due_working_days, updated_at = CurrentUtcTimestamp()
-WHERE case_id = $case_id;
+UPDATE cases SET due_working_days = %(due_working_days)s, updated_at = now()
+WHERE case_id = %(case_id)s
 """
 
 
@@ -79,16 +76,6 @@ def working_days_between(start: date, end: date) -> int:
     return count
 
 
-def _parse_started(value) -> date | None:
-    if not value:
-        return None
-    text = str(value)[:10]
-    try:
-        return date.fromisoformat(text)
-    except ValueError:
-        return None
-
-
 def handler(event, context):
     request_id = get_request_id(event if isinstance(event, dict) else {})
     if is_http_event(event if isinstance(event, dict) else {}):
@@ -98,45 +85,47 @@ def handler(event, context):
     created = 0
     scanned = 0
     try:
-        pool = get_ydb_pool()
-        rows = execute(pool, SELECT_CASES, {})
+        rows = query(SELECT_CASES, {"stages": list(WATCH_STAGES)})
         today = date.today()
         for row in rows:
-            stage = row.get("current_stage") or ""
-            if stage not in WATCH_STAGES:
-                continue
             scanned += 1
-            started = _parse_started(row.get("started_on"))
-            if row.get("due_working_days") is None and started is not None:
+            stage = str(row.get("current_stage") or "")
+            started = row.get("started_on")
+            if row.get("due_working_days") is None and isinstance(started, date):
                 remaining = max(0, 50 - working_days_between(started, today))
             else:
                 remaining = max(0, int(row.get("due_working_days") or 0))
-            case_id = row.get("case_id")
-            execute(pool, UPDATE_DUE, {"$case_id": case_id, "$due_working_days": remaining})
+
+            case_id = str(row["case_id"])
+            execute(UPDATE_DUE, {"case_id": case_id, "due_working_days": remaining})
+
             if remaining not in CALENDAR_ANCHORS:
                 continue
             kind = f"anchor-{remaining}"
-            existing = execute(pool, SELECT_PROPOSALS, {"$case_id": case_id})
-            if any(item.get("kind") == kind and item.get("status") == "proposed" for item in existing):
+            if query(SELECT_PROPOSAL, {"case_id": case_id, "kind": kind}):
                 continue
-            text = {
-                "ru": f"Нормативный якорь {remaining} р.д. по стадии {stage}",
-                "en": f"Normative anchor {remaining} working days at {stage}",
-            }
+
             execute(
-                pool,
                 INSERT_PROPOSAL,
                 {
-                    "$proposal_id": new_id("pr"),
-                    "$case_id": case_id,
-                    "$kind": kind,
-                    "$stage": stage,
-                    "$text_json": dumps_json(text),
+                    "proposal_id": new_id("pr"),
+                    "account_id": str(row["account_id"]),
+                    "case_id": case_id,
+                    "kind": kind,
+                    "stage": stage,
+                    "text": as_json(
+                        {
+                            "ru": f"Нормативный якорь {remaining} р.д. по стадии {stage}",
+                            "en": f"Normative anchor {remaining} working days at {stage}",
+                            "zh": f"{stage} 阶段的法定节点：{remaining} 个工作日",
+                        }
+                    ),
                 },
             )
             created += 1
+
         log_structured(request_id, "info", ROUTE, "tick done", scanned=scanned, created=created)
-        return {"statusCode": 200, "body": dumps_json({"scanned": scanned, "proposals": created})}
+        return {"statusCode": 200, "body": json.dumps({"scanned": scanned, "proposals": created})}
     except Exception as exc:
         log_structured(request_id, "error", ROUTE, "unhandled", error=str(exc))
-        return {"statusCode": 500, "body": dumps_json({"error": str(exc)})}
+        return {"statusCode": 500, "body": json.dumps({"error": str(exc)})}

@@ -1,9 +1,16 @@
 [
+  { "id": "identity", "path": "scr/identity", "yc_name": "pharma-edge-identity" },
+  { "id": "organizations", "path": "scr/organizations", "yc_name": "pharma-edge-organizations" },
+  { "id": "organization_items", "path": "scr/organization_items", "yc_name": "pharma-edge-organization-items" },
+  { "id": "products", "path": "scr/products", "yc_name": "pharma-edge-products" },
+  { "id": "intake", "path": "scr/intake", "yc_name": "pharma-edge-intake" },
   { "id": "cases", "path": "scr/cases", "yc_name": "pharma-edge-cases" },
   { "id": "case_get", "path": "scr/case_get", "yc_name": "pharma-edge-case-get" },
   { "id": "case_update", "path": "scr/case_update", "yc_name": "pharma-edge-case-update" },
+  { "id": "case_start", "path": "scr/case_start", "yc_name": "pharma-edge-case-start" },
   { "id": "dossier_items", "path": "scr/dossier_items", "yc_name": "pharma-edge-dossier-items" },
   { "id": "status_ingest", "path": "scr/status_ingest", "yc_name": "pharma-edge-status-ingest" },
   { "id": "registry_search", "path": "scr/registry_search", "yc_name": "pharma-edge-registry-search" },
+  { "id": "webhooks", "path": "scr/webhooks", "yc_name": "pharma-edge-webhooks" },
   { "id": "calendar_tick", "path": "scr/calendar_tick", "yc_name": "pharma-edge-calendar-tick" }
 ]

@@ -1,3 +1,2 @@
 boto3>=1.28.0
-ydb>=3.0.0
-grpcio>=1.76.0,<1.80.0
+psycopg[binary]>=3.2.0

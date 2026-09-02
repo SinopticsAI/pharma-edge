@@ -1,13 +1,14 @@
 # Edge: разрез и волны
 
 **Дата среза:** 1 сентября 2026 года.  
-**Смежные:** [`functions.md`](functions.md), [`ydb.md`](ydb.md), [`cutover.md`](cutover.md), продуктовый вид [`07-backendnoe.md`](https://github.com/SinopticsAI).
+**Смежные:** [`functions.md`](functions.md), [`db.md`](db.md), [`cutover.md`](cutover.md), продуктовый вид [`07-backendnoe.md`](https://github.com/SinopticsAI).
 
 ## 1. Четыре исполнителя
 
 | Слой | Репозиторий | Что владеет | Чего не делает |
 | --- | --- | --- | --- |
-| **Edge** | этот репозиторий | API Gateway, Cloud Functions, YDB SoR, YMQ/DLQ, поллеры | Не вызывает YaWL напрямую; не гоняет OCR/LLM дольше лимита функции |
+| **Edge** | этот репозиторий | API Gateway, Cloud Functions, PostgreSQL SoR, YMQ/DLQ, поллеры | Не вызывает YaWL напрямую; не гоняет OCR/LLM дольше лимита функции; не ведёт диалог |
+| **Agent** | `pharma-agent` | Mastra в Serverless Container: интейк компании и продукта диалогом | Не ходит в базу кабинета напрямую, не подаёт, не подписывает, не тратит деньги |
 | **Plane** | `pharma-plane` | `api-facade` + YaWL + `doc-prep` + `pipeline-core` + Plane_YDB | Не хранит карточки SPA; не биллит; не заявитель на ЕПГУ |
 | **Hermes** | `hostingervps_hermes` | Публичный поиск, дайджесты, Telegram | Не хранит досье и ПДн; не логинится в ЕСИА; VPS не контур 152-ФЗ |
 | **Рабочее место РФ** | вне облака | УКЭП, КриптоПро, браузер ЕПГУ / ЕЛК / Regmed | Не «робот в облаке» |
@@ -16,13 +17,15 @@
 
 ## 2. Поток на каждый новый продукт
 
-Компания и УПП уже есть — Edge не повторяет онбординг юрлица. На SKU стартует кейс.
+Онбординг компании теперь **входит** в контур: аккаунт заводит менеджер, а
+компанию и продукт пользователь добавляет диалогом с агентом. Кейс появляется
+позже — когда специалист и клиент утвердили классификацию.
 
 ```mermaid
 flowchart TD
   spa[web_cn_web_ru] --> gw[API_Gateway]
   gw --> edge[Edge_Cloud_Functions]
-  edge --> ydb[(YDB_Edge_SoR)]
+  edge --> pg[(PostgreSQL_pharma_cabinet)]
   edge --> ymq[YMQ_plus_DLQ]
   edge -->|"POST actions/start X-API-Key"| facade[api_facade]
   facade --> yawl[YaWL_parent]

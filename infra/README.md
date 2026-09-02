@@ -22,8 +22,8 @@ yc config profile activate pharma-edge
 | --- | --- |
 | [scripts/discover.ps1](scripts/discover.ps1) | Сети, сертификат, DNS, уже созданные id |
 | [scripts/provision.ps1](scripts/provision.ps1) | SA, бакет `pharma-dossier`, YMQ+DLQ, Lockbox |
-| [scripts/ensure-ydb.ps1](scripts/ensure-ydb.ps1) | Serverless YDB `pharma-edge` |
-| [scripts/apply-sql.ps1](scripts/apply-sql.ps1) | DDL + сид организаций |
+| [scripts/ensure-postgres.ps1](scripts/ensure-postgres.ps1) | Кластер: реплика, авторост диска, защита от удаления, доступ `serverless`, правило 6432, базы `pharma_cabinet` и `pharma_agent` |
+| [scripts/apply-sql.ps1](scripts/apply-sql.ps1) | DDL + сид аккаунта и организаций |
 | [scripts/deploy-function.ps1](scripts/deploy-function.ps1) | Cloud Functions волны 1 + timer `calendar_tick` |
 | [scripts/deploy-gateway.ps1](scripts/deploy-gateway.ps1) | `pharma-edge-api-gateway` + spec |
 | [scripts/deploy-dns.ps1](scripts/deploy-dns.ps1) | CNAME `pharma-edge.sinoptics.ru.` |
@@ -33,8 +33,8 @@ yc config profile activate pharma-edge
 ```powershell
 .\infra\scripts\discover.ps1
 .\infra\scripts\provision.ps1
-.\infra\scripts\ensure-ydb.ps1
-.\infra\scripts\apply-sql.ps1
+.\infra\scripts\ensure-postgres.ps1
+.\infra\scripts\apply-sql.ps1   # изнутри сети кластера: публичного хоста нет
 .\infra\scripts\deploy-function.ps1
 .\infra\scripts\deploy-gateway.ps1
 .\infra\scripts\deploy-dns.ps1

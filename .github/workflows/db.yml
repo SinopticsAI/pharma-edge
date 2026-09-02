@@ -1,0 +1,53 @@
+name: DB
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sql/**"
+      - ".github/workflows/db.yml"
+  workflow_dispatch:
+
+# The managed cluster has no public host, so a hosted runner cannot reach the
+# pooler directly. This job validates the DDL and leaves the apply to someone
+# inside the network; running it blind against production would be worse than
+# a manual step.
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: pharma_cabinet
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply schema to a throwaway PostgreSQL
+        env:
+          PGPASSWORD: ci
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d pharma_cabinet -v ON_ERROR_STOP=1 -f sql/01_cabinet.sql
+          psql -h localhost -U postgres -d pharma_cabinet -v ON_ERROR_STOP=1 -f sql/02_seed.sql
+
+      - name: Re-apply to prove the schema is idempotent
+        env:
+          PGPASSWORD: ci
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d pharma_cabinet -v ON_ERROR_STOP=1 -f sql/01_cabinet.sql
+          psql -h localhost -U postgres -d pharma_cabinet -v ON_ERROR_STOP=1 -f sql/02_seed.sql
+
+      - name: Summary
+        run: |
+          echo "Schema applied twice without error." >> "$GITHUB_STEP_SUMMARY"
+          echo "Apply to the managed cluster with infra/scripts/apply-sql.ps1 from inside the network." >> "$GITHUB_STEP_SUMMARY"

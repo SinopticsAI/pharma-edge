@@ -1,18 +1,139 @@
 openapi: 3.0.0
 info:
   title: pharma-edge
-  version: "0.1.0"
-  description: Wave 1 Edge API on pharma-edge.sinoptics.ru. Static portal stays on pharma-api-gateway.
+  version: "0.2.0"
+  description: >
+    Cabinet API on pharma-edge.sinoptics.ru. Browser routes are guarded by the
+    Keycloak authorizer; /webhooks/* is service-to-service on X-API-Key.
+    Static portal stays on pharma-api-gateway.
 servers:
   - url: https://__CUSTOM_DOMAIN__
+
 x-yc-apigateway:
   payload_format_version: "1.0"
+
 x-yc-apigateway-cors:
   allowOrigin: "*"
   allowMethods: ["GET", "POST", "PATCH", "OPTIONS"]
-  allowHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Pharma-Contour", "X-Request-Id"]
+  allowHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Pharma-Contour", "X-Pharma-Account", "X-Request-Id"]
   exposeHeaders: ["Content-Length", "X-Request-ID"]
   maxAge: 3600
+
+components:
+  securitySchemes:
+    keycloak:
+      type: openIdConnect
+      openIdConnectUrl: https://auth.sinoptics.ru/realms/pharma/.well-known/openid-configuration
+      x-yc-apigateway-authorizer:
+        type: jwt
+        jwksUri: https://auth.sinoptics.ru/realms/pharma/protocol/openid-connect/certs
+        issuers:
+          - https://auth.sinoptics.ru/realms/pharma
+        audiences:
+          - pharma.sinoptics.ru
+        identitySource:
+          in: header
+          name: Authorization
+          prefix: "Bearer "
+        requiredClaims:
+          - sub
+        authorizer_result_ttl_in_seconds: 300
+        jwkTtlInSeconds: 3600
+
+  x-yc-apigateway-integrations:
+    cors:
+      type: dummy
+      content:
+        "*": ""
+      http_code: 200
+      http_headers:
+        Access-Control-Allow-Origin: "*"
+        Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
+        Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Pharma-Account, X-Request-Id"
+        Access-Control-Max-Age: "3600"
+    identity:
+      type: cloud_functions
+      function_id: __FN_IDENTITY__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    organizations:
+      type: cloud_functions
+      function_id: __FN_ORGANIZATIONS__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    organization_items:
+      type: cloud_functions
+      function_id: __FN_ORGANIZATION_ITEMS__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    products:
+      type: cloud_functions
+      function_id: __FN_PRODUCTS__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    intake:
+      type: cloud_functions
+      function_id: __FN_INTAKE__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    cases:
+      type: cloud_functions
+      function_id: __FN_CASES__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    case_get:
+      type: cloud_functions
+      function_id: __FN_CASE_GET__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    case_update:
+      type: cloud_functions
+      function_id: __FN_CASE_UPDATE__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    case_start:
+      type: cloud_functions
+      function_id: __FN_CASE_START__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    dossier_items:
+      type: cloud_functions
+      function_id: __FN_DOSSIER_ITEMS__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    status_ingest:
+      type: cloud_functions
+      function_id: __FN_STATUS_INGEST__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    registry_search:
+      type: cloud_functions
+      function_id: __FN_REGISTRY_SEARCH__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    webhooks:
+      type: cloud_functions
+      function_id: __FN_WEBHOOKS__
+      service_account_id: __SA_API_GATEWAY_ID__
+      tag: "$latest"
+      payload_format_version: "1.0"
+    agent:
+      type: serverless_containers
+      container_id: __CONTAINER_AGENT__
+      service_account_id: __SA_API_GATEWAY_ID__
+
 paths:
   /:
     get:
@@ -26,255 +147,353 @@ paths:
           Content-Type: application/json
           Access-Control-Allow-Origin: "*"
       responses:
-        "200":
-          description: Health
+        "200": { description: Health }
+
+  /accounts/me:
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    get:
+      summary: Account and role of the caller
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/identity" }
+      responses: { "200": { description: Identity } }
+
+  /organizations:
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    get:
+      summary: List companies of the account
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organizations" }
+      responses: { "200": { description: Companies } }
+    post:
+      summary: Start a company
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organizations" }
+      responses: { "201": { description: Created } }
+
+  /organizations/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    get:
+      summary: Company with slots and completeness
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organizations" }
+      responses: { "200": { description: Company } }
+    patch:
+      summary: Patch draft or approve the profile
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organizations" }
+      responses: { "200": { description: Updated } }
+
+  /organizations/{id}/risk:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    get:
+      summary: Risk level and neutral reasoning, never raw sources
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organizations" }
+      responses: { "200": { description: Risk report } }
+    post:
+      summary: Record a risk verdict
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organizations" }
+      responses: { "201": { description: Recorded } }
+
+  /organizations/{id}/items:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    get:
+      summary: Intake documents of the company and its products
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organization_items" }
+      responses: { "200": { description: Items } }
+
+  /organizations/{id}/items/upload-url:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    post:
+      summary: Presigned PUT for an intake document
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organization_items" }
+      responses: { "200": { description: Presigned PUT } }
+
+  /organizations/{id}/items/{itemId}/confirm-upload:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: itemId, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    post:
+      summary: Confirm upload and hand the file to Plane
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organization_items" }
+      responses: { "200": { description: Confirmed } }
+
+  /organizations/{id}/items/{itemId}/promote:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: itemId, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    post:
+      summary: Raise a product document to the company profile
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organization_items" }
+      responses: { "200": { description: Promoted } }
+
+  /organizations/{id}/products:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    get:
+      summary: Products of a company
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/products" }
+      responses: { "200": { description: Products } }
+    post:
+      summary: Start a product
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/products" }
+      responses: { "201": { description: Created } }
+
+  /products/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    get:
+      summary: Product with inherited documents and variants
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/products" }
+      responses: { "200": { description: Product } }
+    patch:
+      summary: Patch the draft or approve product data
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/products" }
+      responses: { "200": { description: Updated } }
+
+  /products/{id}/variants:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    get:
+      summary: Classification options
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/products" }
+      responses: { "200": { description: Variants } }
+    post:
+      summary: Propose classification options
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/products" }
+      responses: { "201": { description: Proposed } }
+
+  /products/{id}/approve:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    post:
+      summary: Specialist then client approval, in that order
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/products" }
+      responses: { "200": { description: Approved } }
+
+  /intake/sessions:
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    post:
+      summary: Open an intake session
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/intake" }
+      responses: { "201": { description: Session } }
+
+  /intake/sessions/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    get:
+      summary: Session state
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/intake" }
+      responses: { "200": { description: Session } }
+
+  /intake/sessions/{id}/messages:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    get:
+      summary: Journal of the dialog
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/intake" }
+      responses: { "200": { description: Messages } }
+    post:
+      summary: Append to the journal
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/intake" }
+      responses: { "201": { description: Appended } }
+
+  /chat/{agentId}:
+    parameters:
+      - { name: agentId, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    post:
+      summary: Agent turn. Buffered, not streamed — containers cannot stream.
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/agent" }
+      responses: { "200": { description: AI SDK UI message stream } }
+
   /cases:
     options:
-      x-yc-apigateway-integration:
-        type: dummy
-        content:
-          "*": ""
-        http_code: 200
-        http_headers:
-          Access-Control-Allow-Origin: "*"
-          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
-          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
-          Access-Control-Max-Age: "3600"
-      responses:
-        "200":
-          description: CORS
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
     get:
       summary: List cases
-      x-yc-apigateway-integration:
-        type: cloud_functions
-        function_id: __FN_CASES__
-        service_account_id: __SA_API_GATEWAY_ID__
-        tag: "$latest"
-        payload_format_version: "1.0"
-      responses:
-        "200":
-          description: Case list
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cases" }
+      responses: { "200": { description: Case list } }
     post:
       summary: Create case
-      x-yc-apigateway-integration:
-        type: cloud_functions
-        function_id: __FN_CASES__
-        service_account_id: __SA_API_GATEWAY_ID__
-        tag: "$latest"
-        payload_format_version: "1.0"
-      responses:
-        "201":
-          description: Created
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cases" }
+      responses: { "201": { description: Created } }
+
   /cases/{id}:
     parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
+      - { name: id, in: path, required: true, schema: { type: string } }
     options:
-      x-yc-apigateway-integration:
-        type: dummy
-        content:
-          "*": ""
-        http_code: 200
-        http_headers:
-          Access-Control-Allow-Origin: "*"
-          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
-          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
-          Access-Control-Max-Age: "3600"
-      responses:
-        "200":
-          description: CORS
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
     get:
-      summary: Get case
-      x-yc-apigateway-integration:
-        type: cloud_functions
-        function_id: __FN_CASE_GET__
-        service_account_id: __SA_API_GATEWAY_ID__
-        tag: "$latest"
-        payload_format_version: "1.0"
-      responses:
-        "200":
-          description: Case card
+      summary: Case card with the node map
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/case_get" }
+      responses: { "200": { description: Case } }
     patch:
       summary: Update case
-      x-yc-apigateway-integration:
-        type: cloud_functions
-        function_id: __FN_CASE_UPDATE__
-        service_account_id: __SA_API_GATEWAY_ID__
-        tag: "$latest"
-        payload_format_version: "1.0"
-      responses:
-        "200":
-          description: Updated
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/case_update" }
+      responses: { "200": { description: Updated } }
+
+  /cases/{id}/actions/start:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    post:
+      summary: Hand documents to Plane
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/case_start" }
+      responses: { "202": { description: Started } }
+
   /cases/{id}/items:
     parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
+      - { name: id, in: path, required: true, schema: { type: string } }
     options:
-      x-yc-apigateway-integration:
-        type: dummy
-        content:
-          "*": ""
-        http_code: 200
-        http_headers:
-          Access-Control-Allow-Origin: "*"
-          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
-          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
-          Access-Control-Max-Age: "3600"
-      responses:
-        "200":
-          description: CORS
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
     get:
       summary: List dossier items
-      x-yc-apigateway-integration:
-        type: cloud_functions
-        function_id: __FN_DOSSIER_ITEMS__
-        service_account_id: __SA_API_GATEWAY_ID__
-        tag: "$latest"
-        payload_format_version: "1.0"
-      responses:
-        "200":
-          description: Items
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/dossier_items" }
+      responses: { "200": { description: Items } }
+
   /cases/{id}/items/upload-url:
     parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
+      - { name: id, in: path, required: true, schema: { type: string } }
     options:
-      x-yc-apigateway-integration:
-        type: dummy
-        content:
-          "*": ""
-        http_code: 200
-        http_headers:
-          Access-Control-Allow-Origin: "*"
-          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
-          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
-          Access-Control-Max-Age: "3600"
-      responses:
-        "200":
-          description: CORS
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
     post:
       summary: Presigned dossier upload URL
-      x-yc-apigateway-integration:
-        type: cloud_functions
-        function_id: __FN_DOSSIER_ITEMS__
-        service_account_id: __SA_API_GATEWAY_ID__
-        tag: "$latest"
-        payload_format_version: "1.0"
-      responses:
-        "200":
-          description: Presigned PUT
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/dossier_items" }
+      responses: { "200": { description: Presigned PUT } }
+
   /cases/{id}/items/{itemId}/confirm-upload:
     parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: itemId
-        in: path
-        required: true
-        schema:
-          type: string
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: itemId, in: path, required: true, schema: { type: string } }
     options:
-      x-yc-apigateway-integration:
-        type: dummy
-        content:
-          "*": ""
-        http_code: 200
-        http_headers:
-          Access-Control-Allow-Origin: "*"
-          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
-          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
-          Access-Control-Max-Age: "3600"
-      responses:
-        "200":
-          description: CORS
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
     post:
       summary: Confirm dossier upload
-      x-yc-apigateway-integration:
-        type: cloud_functions
-        function_id: __FN_DOSSIER_ITEMS__
-        service_account_id: __SA_API_GATEWAY_ID__
-        tag: "$latest"
-        payload_format_version: "1.0"
-      responses:
-        "200":
-          description: Confirmed item
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/dossier_items" }
+      responses: { "200": { description: Confirmed } }
+
   /cases/{id}/statuses:
     parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
+      - { name: id, in: path, required: true, schema: { type: string } }
     options:
-      x-yc-apigateway-integration:
-        type: dummy
-        content:
-          "*": ""
-        http_code: 200
-        http_headers:
-          Access-Control-Allow-Origin: "*"
-          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
-          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
-          Access-Control-Max-Age: "3600"
-      responses:
-        "200":
-          description: CORS
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
     get:
       summary: List statuses
-      x-yc-apigateway-integration:
-        type: cloud_functions
-        function_id: __FN_STATUS_INGEST__
-        service_account_id: __SA_API_GATEWAY_ID__
-        tag: "$latest"
-        payload_format_version: "1.0"
-      responses:
-        "200":
-          description: Statuses
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/status_ingest" }
+      responses: { "200": { description: Statuses } }
     post:
       summary: Ingest operator status
-      x-yc-apigateway-integration:
-        type: cloud_functions
-        function_id: __FN_STATUS_INGEST__
-        service_account_id: __SA_API_GATEWAY_ID__
-        tag: "$latest"
-        payload_format_version: "1.0"
-      responses:
-        "201":
-          description: Created status
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/status_ingest" }
+      responses: { "201": { description: Created status } }
+
   /registry/search:
     options:
-      x-yc-apigateway-integration:
-        type: dummy
-        content:
-          "*": ""
-        http_code: 200
-        http_headers:
-          Access-Control-Allow-Origin: "*"
-          Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
-          Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Request-Id"
-          Access-Control-Max-Age: "3600"
-      responses:
-        "200":
-          description: CORS
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
     get:
       summary: Registry search (cached, not truth)
-      x-yc-apigateway-integration:
-        type: cloud_functions
-        function_id: __FN_REGISTRY_SEARCH__
-        service_account_id: __SA_API_GATEWAY_ID__
-        tag: "$latest"
-        payload_format_version: "1.0"
-      responses:
-        "200":
-          description: Search hits
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/registry_search" }
+      responses: { "200": { description: Search hits } }
+
+  # Plane calls these with X-API-Key. No Keycloak token, no browser.
+  /webhooks/cases/{id}/items/{itemId}/update:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: itemId, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Extraction result from Plane
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/webhooks" }
+      responses: { "200": { description: Stored } }
+
+  /webhooks/cases/{id}/completed:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Pipeline finished
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/webhooks" }
+      responses: { "200": { description: Stored } }

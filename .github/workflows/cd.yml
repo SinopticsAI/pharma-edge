@@ -65,8 +65,12 @@ jobs:
           environment: |
             DEPLOY_ENV=prod
             YC_FUNCTION_NAME=${{ steps.fn.outputs.yc_name }}
-            YDB_ENDPOINT=${{ secrets.YDB_ENDPOINT }}
-            YDB_DATABASE=${{ secrets.YDB_DATABASE }}
+            PG_HOST=${{ secrets.PG_HOST }}
+            PG_PORT=6432
+            PG_DATABASE=pharma_cabinet
+            PG_USER=pharma_cabinet
+            PG_PASSWORD=${{ secrets.PG_CABINET_PASSWORD }}
+            PG_SSLMODE=verify-full
             DOSSIER_BUCKET=pharma-dossier
             S3_ENDPOINT=https://storage.yandexcloud.net
             PHARMA_EDGE_API_KEY=${{ secrets.PHARMA_EDGE_API_KEY }}
