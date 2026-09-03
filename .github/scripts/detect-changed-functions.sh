@@ -10,6 +10,7 @@ DEPLOY_ALL_PATHS=(
   ".github/workflows/cd.yml"
   ".github/workflows/ci.yml"
   ".github/workflows/ct.yml"
+  ".github/scripts/prepare-function-env.py"
   "infra/gateway/openapi.template.yaml"
   "scr/_shared"
 )

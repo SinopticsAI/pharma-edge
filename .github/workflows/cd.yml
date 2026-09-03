@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      force_deploy_all:
+        description: Deploy all 14 functions, not only the git diff
+        type: boolean
+        default: true
 
 env:
   FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
@@ -16,6 +21,16 @@ jobs:
     with:
       event_name: ${{ github.event_name }}
       diff_head: ${{ github.sha }}
+      force_deploy_all: ${{ github.event_name == 'workflow_dispatch' && (inputs.force_deploy_all == true || inputs.force_deploy_all == 'true') && 'true' || 'false' }}
+
+  nothing-to-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_work != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain skip
+        run: |
+          echo "::warning::CD skipped function deploy. This commit did not change scr/** or workflow paths, so existing pharma-edge-* functions were not updated. To deploy all 14: Actions → CD → Run workflow. That still needs GitHub secret LOCKBOX_PG_ID and quota serverless.functions.count >= 48."
 
   deploy:
     needs: detect-changes

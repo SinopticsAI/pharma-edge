@@ -61,7 +61,7 @@ URL очередей YMQ предпочтительно читать из Lockbo
 | --- | --- | --- |
 | CI | push в `feature*` | деплой изменённых `scr/**` в preprod |
 | CT | PR в `main` | валидация без `yc deploy` (`compileall`, структура) |
-| CD | push в `main`, release, dispatch | деплой изменённых функций в prod |
+| CD | push в `main`, release, dispatch | деплой изменённых функций в prod. Правка только `spec/**` / README — skip, это не выкат. Полный выкат: Actions → CD → Run workflow |
 | detect-changes | reusable | matrix по `git diff` |
 | db | изменения в `sql/**` | `psql` apply изнутри сети кластера |
 
@@ -70,6 +70,8 @@ URL очередей YMQ предпочтительно читать из Lockbo
 Каталог общий с Logos: в нём уже ~40 функций. Edge нужно ещё 14 имён `pharma-edge-*`. Пока квота `serverless.functions.count` не поднята хотя бы до 48, `Create` падает с `RESOURCE_EXHAUSTED`. Пустые `PG_HOST` / `PG_PASSWORD` в env CD не передаём — YC отвечает `INVALID_ARGUMENT`. Пароль кабинета создаёт [`pharma-postgracesql`](https://github.com/SinopticsAI/pharma-postgracesql) (`ensure-postgres.ps1` → Lockbox `pharma-edge-pg`).
 
 Если в annotations CD только `Process completed with exit code 1` — это шаг **Prepare function env**, не `yc deploy`. Значит в GitHub нет `LOCKBOX_PG_ID` и нет запасного `PG_CABINET_PASSWORD`. Environment `prod` секретов не дублирует: класть в **Repository secrets**. Environment `preprod` должен существовать, иначе CI на `feature*` не стартует.
+
+Зелёный CD за 12 секунд с skipped `deploy` / `update-gateway` значит **ничего не выкатили**: в diff не было `scr/**` и workflow-путей. В каталоге из 14 имён `pharma-edge-*` пока 6 (первый прогон упёрся в квоту). Остальные 8 и шлюз `pharma-edge-api-gateway` CD сам не создаст, пока нет квоты, Lockbox `pharma-edge-pg` и (для шлюза) одноразового `deploy-gateway` в [`pharma_env`](https://github.com/SinopticsAI/pharma_env).
 
 Поток:
 
