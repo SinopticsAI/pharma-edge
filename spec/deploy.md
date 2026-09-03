@@ -35,7 +35,7 @@ Settings → Environments:
 
 | Secret | Назначение |
 | --- | --- |
-| `YC_SA_JSON_CREDENTIALS` | JSON authorized key деплой-SA (`pharma-edge-sa-ci`) |
+| `YC_SA_JSON_CREDENTIALS` | JSON authorized key деплой-SA (`pharma-edge-sa-ci`). Нужна роль `vpc.user`, иначе CreateVersion: `VPC Network … not found or permission denied` |
 | `YC_CLOUD_ID` | `b1gip1vv7381q4bsoaso` |
 | `YC_FOLDER_ID` | `b1g07nbj3q7ccru38on0` |
 | `YC_SA_PREPROD_ID` | runtime SA preprod (заполнить после provision) |
@@ -45,7 +45,7 @@ Settings → Environments:
 | `PG_HOST` | `c-c9qbferg3hcqjnqkghcp.rw.mdb.yandexcloud.net` — не секрет; CD подставит сам, если пусто |
 | `PG_PORT` | `6432` — пулер Odyssey, не 5432 |
 | `VPC_NETWORK_ID` | сеть кластера (`enpp5oe8dlepbkjm52rl`); без неё функция до пулера не дотянется |
-| `LOCKBOX_PG_ID` | секрет `pharma-edge-pg`, ключ `pharma_cabinet_password`. Пароль в plaintext `PG_CABINET_PASSWORD` — только запасной путь |
+| `LOCKBOX_PG_ID` | id секрета Lockbox `pharma-edge-pg` (`e6q…`), не id версии и не имя. Ключ payload `pharma_cabinet_password`. CD шлёт `…/latest/…`; нужен `yc-sls-function@v5`, иначе YC ищет версию с id `latest` и отвечает NOT_FOUND |
 | `LOCKBOX_HTTP_ID` | секрет `pharma-edge-http`, ключ `PHARMA_EDGE_API_KEY` |
 | `LOCKBOX_S3_ID` | секрет `pharma-edge-s3` для presigned upload |
 | `PG_CABINET_PASSWORD` | не класть, если есть Lockbox. Пустое значение YC отклоняет как `INVALID_ARGUMENT` |

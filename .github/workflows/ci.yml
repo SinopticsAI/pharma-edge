@@ -71,7 +71,7 @@ jobs:
         run: python3 .github/scripts/prepare-function-env.py
 
       - name: Deploy function
-        uses: yc-actions/yc-sls-function@v3.1.0
+        uses: yc-actions/yc-sls-function@v5
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           folder-id: ${{ env.FOLDER_ID }}

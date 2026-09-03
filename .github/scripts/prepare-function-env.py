@@ -89,6 +89,8 @@ def main() -> int:
         env_pairs.append(("AWS_ACCESS_KEY_ID", aws_key))
         env_pairs.append(("AWS_SECRET_ACCESS_KEY", aws_secret))
 
+    # yc-sls-function@v3 sent "latest" to the API as a version id and YC
+    # answered NOT_FOUND. v5 resolves latest to current_version.id at deploy.
     secret_lines: list[str] = []
     if lockbox_pg:
         secret_lines.append(f"PG_PASSWORD={lockbox_pg}/latest/{PG_LOCKBOX_KEY}")

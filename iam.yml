@@ -8,14 +8,14 @@ cloud_id: b1gip1vv7381q4bsoaso
 
 service_accounts:
   - name: pharma-edge-sa-func
-    description: Runtime SA for Cloud Functions (YDB, YMQ, Object Storage dossier)
+    description: Runtime SA for Cloud Functions (Lockbox, YMQ, Object Storage, VPC to PG pooler)
     roles:
       - functions.functionInvoker
-      - ydb.editor
       - ymq.writer
       - ymq.reader
       - storage.editor
       - lockbox.payloadViewer
+      - vpc.user
 
   - name: pharma-edge-sa-gateway
     description: API Gateway invokes functions and reads static bucket if needed
@@ -31,6 +31,8 @@ service_accounts:
       - ymq.admin
       - storage.editor
       - lockbox.editor
+      - lockbox.viewer
       - lockbox.payloadViewer
-      - ydb.editor
+      - mdb.viewer
+      - vpc.user
       - api-gateway.editor
