@@ -116,3 +116,17 @@ yc config profile activate pharma-edge
 - `yc serverless function list --folder-id b1g07nbj3q7ccru38on0` — только `pharma-edge-*`, не `logos-*`.
 - SPA ходит только в Edge. Plane для браузера не существует.
 - В Lockbox и env нет ключей УКЭП.
+
+Быстрый прогон функции без браузера (видно текст ошибки, а не «Ядро кабинета не ответило»):
+
+```powershell
+yc serverless function invoke --id <fn-id> --data-file probe.json
+```
+
+Что означает 500 на `/accounts/me`:
+
+| Текст в теле / логе | Причина |
+| --- | --- |
+| `root certificate file "/function/.postgresql/root.crt" does not exist` | в zip функции нет `certs/root.crt`; версия старее фикса `edge_pg.py` |
+| `relation "accounts" does not exist` | схема не накатана: `sql/01_cabinet.sql` + `02_seed.sql` из [`pharma-postgracesql`](https://github.com/SinopticsAI/pharma-postgracesql). Кластер без публичного хоста, поэтому apply идёт из сети (VM/туннель) или через WebSQL в консоли |
+| `connection timeout` | у версии нет `network-id` либо security group не пускает `198.19.0.0/16` на 6432 |
