@@ -46,7 +46,8 @@ $ciSa = Ensure-ServiceAccount -Name "pharma-edge-sa-ci" -AccountKey "SA_CI_ID" -
     "mdb.viewer",
     "vpc.user",
     "api-gateway.editor",
-    "serverless-containers.viewer"
+    "serverless-containers.viewer",
+    "iam.serviceAccounts.user"
 )
 Write-Host "SA func=$funcId gateway=$gwSa ci=$ciSa"
 

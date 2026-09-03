@@ -35,7 +35,7 @@ Settings → Environments:
 
 | Secret | Назначение |
 | --- | --- |
-| `YC_SA_JSON_CREDENTIALS` | JSON authorized key деплой-SA (`pharma-edge-sa-ci`). Нужна роль `vpc.user`, иначе CreateVersion: `VPC Network … not found or permission denied` |
+| `YC_SA_JSON_CREDENTIALS` | JSON authorized key деплой-SA (`pharma-edge-sa-ci`). Нужны `vpc.user` и `iam.serviceAccounts.user` — иначе CreateVersion не цепляет VPC, а update шлюза: `Cannot access service account` |
 | `YC_CLOUD_ID` | `b1gip1vv7381q4bsoaso` |
 | `YC_FOLDER_ID` | `b1g07nbj3q7ccru38on0` |
 | `YC_SA_PREPROD_ID` | runtime SA preprod (заполнить после provision) |

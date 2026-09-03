@@ -38,3 +38,4 @@ service_accounts:
       - vpc.user
       - api-gateway.editor
       - serverless-containers.viewer
+      - iam.serviceAccounts.user
