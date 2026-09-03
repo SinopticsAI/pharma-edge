@@ -85,6 +85,7 @@ jobs:
           include: |
             **/*.py
             requirements.txt
+            certs/root.crt
           network-id: ${{ steps.env.outputs.network_id }}
           environment: ${{ steps.env.outputs.environment }}
           secrets: ${{ steps.env.outputs.secrets }}

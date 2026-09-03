@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from pathlib import Path
 from typing import Any, Optional
 
 import psycopg
@@ -22,7 +23,22 @@ from psycopg.types.json import Jsonb
 _lock = threading.Lock()
 _conn: Optional[psycopg.Connection] = None
 
-SSL_ROOT_CERT = "/function/storage/certs/root.crt"
+# YC Functions zip lands under /function. sync_shared.py copies the MDB CA to
+# certs/root.crt next to this module. The storage/ path is a leftover from an
+# earlier mount that was never attached.
+_MODULE_CERT = Path(__file__).resolve().parent / "certs" / "root.crt"
+_CERT_CANDIDATES = (
+    "/function/storage/certs/root.crt",
+    "/function/certs/root.crt",
+)
+
+
+def _existing_cert() -> str:
+    env_path = (os.getenv("PG_SSLROOTCERT") or "").strip()
+    for path in (env_path, str(_MODULE_CERT), *_CERT_CANDIDATES):
+        if path and os.path.isfile(path):
+            return path
+    return ""
 
 
 def _dsn() -> str:
@@ -36,9 +52,13 @@ def _dsn() -> str:
     password = os.getenv("PG_PASSWORD") or ""
     if not host:
         raise RuntimeError("PG_HOST or PG_DSN must be set")
-    # Inside the cloud network the pooler is reachable without TLS, but we keep
-    # verify-full when a root certificate is shipped with the function.
-    sslmode = os.getenv("PG_SSLMODE") or "verify-full"
+    requested = (os.getenv("PG_SSLMODE") or "verify-full").strip() or "verify-full"
+    cert = _existing_cert()
+    # verify-full without sslrootcert makes libpq look at ~/.postgresql/root.crt
+    # (/function/.postgresql/root.crt in Cloud Functions) and fail the request.
+    sslmode = requested
+    if requested.startswith("verify") and not cert:
+        sslmode = "require"
     parts = [
         f"host={host}",
         f"port={port}",
@@ -48,11 +68,8 @@ def _dsn() -> str:
         f"sslmode={sslmode}",
         "connect_timeout=5",
     ]
-    root_cert = os.getenv("PG_SSLROOTCERT") or (
-        SSL_ROOT_CERT if os.path.exists(SSL_ROOT_CERT) else ""
-    )
-    if root_cert and sslmode.startswith("verify"):
-        parts.append(f"sslrootcert={root_cert}")
+    if cert and sslmode.startswith("verify"):
+        parts.append(f"sslrootcert={cert}")
     return " ".join(parts)
 
 

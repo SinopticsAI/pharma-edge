@@ -31,7 +31,7 @@ SQL считаются одним запросом.
 | Хост | `c-c9qbferg3hcqjnqkghcp.rw.mdb.yandexcloud.net` |
 | Порт | **6432** — пулер Odyssey в режиме транзакций |
 | Базы | `pharma_cabinet` (Edge), `pharma_agent` (Mastra) |
-| TLS | `sslmode=verify-full`, корневой сертификат Яндекса |
+| TLS | `sslmode=verify-full`, CA из `certs/root.crt` в zip функции (Yandex MDB) |
 | Сеть | функции и контейнер поднимаются с `--network-id` сети кластера |
 
 Порт именно 6432. На 5432 сессионный пул, и серверлес-вызов его исчерпает.

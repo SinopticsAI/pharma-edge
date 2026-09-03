@@ -31,7 +31,7 @@ jobs:
           missing = []
           for entry in manifest:
               root = pathlib.Path(entry["path"])
-              for name in ("index.py", "requirements.txt", "common_log.py"):
+              for name in ("index.py", "requirements.txt", "common_log.py", "certs/root.crt"):
                   if not (root / name).is_file():
                       missing.append(f"{root}/{name}")
           if missing:
