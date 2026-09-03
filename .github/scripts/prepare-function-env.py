@@ -23,6 +23,11 @@ def _clean(name: str) -> str:
     return (os.environ.get(name) or "").strip()
 
 
+def _error(message: str) -> None:
+    # Surface the reason in Actions annotations, not only the job log.
+    print(f"::error::{message}", file=sys.stderr)
+
+
 def _write_output(name: str, value: str) -> None:
     path = os.environ.get("GITHUB_OUTPUT")
     if not path:
@@ -51,15 +56,14 @@ def main() -> int:
     plane_base = _clean("PHARMA_PLANE_BASE_URL")
 
     if not function_name:
-        print("YC_FUNCTION_NAME is empty", file=sys.stderr)
+        _error("YC_FUNCTION_NAME is empty")
         return 1
     if not lockbox_pg and not pg_password:
-        print(
+        _error(
             "Missing PostgreSQL password: set GitHub secret LOCKBOX_PG_ID "
             "(preferred, after pharma-postgracesql ensure-postgres.ps1) "
             "or PG_CABINET_PASSWORD. Empty PG_PASSWORD is rejected by "
-            "Yandex Cloud as INVALID_ARGUMENT.",
-            file=sys.stderr,
+            "Yandex Cloud as INVALID_ARGUMENT."
         )
         return 1
 

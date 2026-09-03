@@ -69,6 +69,8 @@ URL очередей YMQ предпочтительно читать из Lockbo
 
 Каталог общий с Logos: в нём уже ~40 функций. Edge нужно ещё 14 имён `pharma-edge-*`. Пока квота `serverless.functions.count` не поднята хотя бы до 48, `Create` падает с `RESOURCE_EXHAUSTED`. Пустые `PG_HOST` / `PG_PASSWORD` в env CD не передаём — YC отвечает `INVALID_ARGUMENT`. Пароль кабинета создаёт [`pharma-postgracesql`](https://github.com/SinopticsAI/pharma-postgracesql) (`ensure-postgres.ps1` → Lockbox `pharma-edge-pg`).
 
+Если в annotations CD только `Process completed with exit code 1` — это шаг **Prepare function env**, не `yc deploy`. Значит в GitHub нет `LOCKBOX_PG_ID` и нет запасного `PG_CABINET_PASSWORD`. Environment `prod` секретов не дублирует: класть в **Repository secrets**. Environment `preprod` должен существовать, иначе CI на `feature*` не стартует.
+
 Поток:
 
 ```
