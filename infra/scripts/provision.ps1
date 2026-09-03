@@ -32,6 +32,7 @@ $funcId = Ensure-ServiceAccount -Name "pharma-edge-sa-func" -AccountKey "SA_FUNC
 )
 $gwSa = Ensure-ServiceAccount -Name "pharma-edge-sa-gateway" -AccountKey "SA_API_GATEWAY_ID" -Roles @(
     "functions.functionInvoker",
+    "serverless-containers.containerInvoker",
     "storage.viewer"
 )
 $ciSa = Ensure-ServiceAccount -Name "pharma-edge-sa-ci" -AccountKey "SA_CI_ID" -Roles @(
@@ -40,10 +41,12 @@ $ciSa = Ensure-ServiceAccount -Name "pharma-edge-sa-ci" -AccountKey "SA_CI_ID" -
     "ymq.admin",
     "storage.editor",
     "lockbox.editor",
+    "lockbox.viewer",
     "lockbox.payloadViewer",
     "mdb.viewer",
     "vpc.user",
-    "api-gateway.editor"
+    "api-gateway.editor",
+    "serverless-containers.viewer"
 )
 Write-Host "SA func=$funcId gateway=$gwSa ci=$ciSa"
 

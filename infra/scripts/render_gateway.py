@@ -74,21 +74,29 @@ def _yc_resource_id(kind: str, name: str) -> str:
         raw = subprocess.check_output(
             ["yc", "serverless", kind, "get", "--name", name, "--format", "json"],
             text=True,
+            stderr=subprocess.DEVNULL,
         )
         return json.loads(raw).get("id") or ""
-    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
+    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError, OSError):
         return ""
 
 
+def _is_container_id(value: str) -> bool:
+    return value.startswith("bba") and len(value) > 8
+
+
 def resolve(token: str, env_key: str, fallback: str, account: dict[str, str]) -> str:
-    value = os.getenv(env_key) or account.get(env_key) or ""
+    value = (os.getenv(env_key) or account.get(env_key) or "").strip()
+    if token == "__CONTAINER_AGENT__":
+        if _is_container_id(value):
+            return value
+        # Do not probe yc when the id is unknown: CI SA often lacks
+        # serverless-containers.viewer, and the container may not exist yet.
+        # PermissionDenied must not fail CD — /chat/* stays a 503 stub.
+        return ""
     if value:
         return value
-    if token == "__CONTAINER_AGENT__":
-        looked = _yc_resource_id("container", fallback)
-        if looked:
-            return looked
-    elif fallback.startswith("pharma-edge-"):
+    if fallback.startswith("pharma-edge-"):
         looked = _yc_resource_id("function", fallback)
         if looked:
             return looked
@@ -99,13 +107,13 @@ def main() -> None:
     account = _read_account_env()
     text = TEMPLATE.read_text(encoding="utf-8")
 
-    agent_env, agent_fallback = PLACEHOLDERS["__CONTAINER_AGENT__"]
-    agent = resolve("__CONTAINER_AGENT__", agent_env, agent_fallback, account)
-    if agent == agent_fallback:
+    agent = resolve("__CONTAINER_AGENT__", "CONTAINER_AGENT_ID", "pharma-agent", account)
+    if not _is_container_id(agent):
         if AGENT_CONTAINER_BLOCK not in text:
             raise SystemExit("agent integration block not found in the template")
         text = text.replace(AGENT_CONTAINER_BLOCK, AGENT_STUB_BLOCK)
         print("WARNING: CONTAINER_AGENT_ID is empty; /chat/* will answer 503")
+        agent = ""
 
     missing = []
     for token, (env_key, fallback) in PLACEHOLDERS.items():

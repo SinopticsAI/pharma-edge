@@ -18,9 +18,10 @@ service_accounts:
       - vpc.user
 
   - name: pharma-edge-sa-gateway
-    description: API Gateway invokes functions and reads static bucket if needed
+    description: API Gateway invokes functions, the agent container, and static bucket if needed
     roles:
       - functions.functionInvoker
+      - serverless-containers.containerInvoker
       - storage.viewer
 
   - name: pharma-edge-sa-ci
@@ -36,3 +37,4 @@ service_accounts:
       - mdb.viewer
       - vpc.user
       - api-gateway.editor
+      - serverless-containers.viewer

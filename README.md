@@ -2,7 +2,7 @@
 
 Edge-слой портала государственной регистрации ЛП и МИ: HTTP API Gateway, Cloud Functions, PostgreSQL SoR кабинета, YMQ/DLQ, таймеры-поллеры.
 
-Обработка файлов (OCR, комплектность, агенты) живёт в [`SinopticsAI/pharma-plane`](https://github.com/SinopticsAI/pharma-plane). Диалог интейка — в [`SinopticsAI/pharma-agent`](https://github.com/SinopticsAI/pharma-agent) (Mastra за этим же шлюзом). Разведка без досье — в `hostingervps_hermes` (`pharma_intel`). Статика `pharma.sinoptics.ru` — в [`pharma_cert/infra`](https://github.com/SinopticsAI) (демо-бакет, не бакет досье).
+Обработка файлов (OCR, комплектность, агенты) живёт в [`SinopticsAI/pharma-plane`](https://github.com/SinopticsAI/pharma-plane). Диалог интейка — в [`SinopticsAI/pharma-agent`](https://github.com/SinopticsAI/pharma-agent) (Mastra за этим же шлюзом). Разведка без досье — в `hostingervps_hermes` (`pharma_intel`). Статика `pharma.sinoptics.ru` — в [`pharma_ui`](https://github.com/SinopticsAI/pharma_ui) (демо-бакет, не бакет досье).
 
 **Дата среза спецификации:** 2 сентября 2026 года.  
 **Продуктовый источник:** [`pharma_cert/portal/view/07-backendnoe.md`](https://github.com/SinopticsAI).  
