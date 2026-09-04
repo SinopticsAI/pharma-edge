@@ -63,6 +63,18 @@ try {
     Write-Host "bucket private update skipped: $($_.Exception.Message)"
 }
 
+# The SPA PUTs the file itself to a presigned URL. Object Storage answers
+# OPTIONS without CORS headers unless the bucket has a rule, and the UI then
+# reports storage_unreachable ("signed link is unavailable").
+$portalOrigin = Get-AccountValue "PORTAL_ORIGIN" "https://pharma.sinoptics.ru"
+try {
+    $cors = "allowed-methods='[method-put,method-get,method-head]',allowed-origins='[$portalOrigin]',allowed-headers='[*]',expose-headers='[ETag]',max-age-seconds=3600"
+    yc storage bucket update --name $bucket --cors $cors
+    Write-Host "bucket CORS for $portalOrigin"
+} catch {
+    Write-Host "bucket CORS update skipped: $($_.Exception.Message)"
+}
+
 function Ensure-Lockbox {
     param([string]$Name, [string]$AccountKey, [hashtable]$Entries)
     $secrets = yc lockbox secret list --folder-id $folder --format json | ConvertFrom-Json

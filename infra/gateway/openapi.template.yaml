@@ -18,7 +18,7 @@ x-yc-apigateway:
 x-yc-apigateway-cors:
   allowOrigin: "*"
   allowMethods: ["GET", "POST", "PATCH", "OPTIONS"]
-  allowHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Pharma-Contour", "X-Pharma-Account", "X-Request-Id"]
+  allowHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Pharma-Contour", "X-Pharma-Account", "X-Pharma-Locale", "X-Request-Id"]
   exposeHeaders: ["Content-Length", "X-Request-ID"]
   maxAge: 3600
 
@@ -52,7 +52,7 @@ components:
       http_headers:
         Access-Control-Allow-Origin: "*"
         Access-Control-Allow-Methods: "GET, POST, PATCH, OPTIONS"
-        Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Pharma-Account, X-Request-Id"
+        Access-Control-Allow-Headers: "Content-Type, Authorization, X-API-Key, X-Pharma-Contour, X-Pharma-Account, X-Pharma-Locale, X-Request-Id"
         Access-Control-Max-Age: "3600"
     identity:
       type: cloud_functions
