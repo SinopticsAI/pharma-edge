@@ -57,18 +57,17 @@ if (-not $exists) {
     Write-Host "Creating private bucket $bucket"
     yc storage bucket create --name $bucket --default-storage-class standard
 }
-try {
-    yc storage bucket update --name $bucket --private
-} catch {
-    Write-Host "bucket private update skipped: $($_.Exception.Message)"
-}
+# yc 1.13 has no --private; create already leaves anonymous read/list off.
 
 # The SPA PUTs the file itself to a presigned URL. Object Storage answers
 # OPTIONS without CORS headers unless the bucket has a rule, and the UI then
 # reports storage_unreachable ("signed link is unavailable").
 $portalOrigin = Get-AccountValue "PORTAL_ORIGIN" "https://pharma.sinoptics.ru"
 try {
-    $cors = "allowed-methods='[method-put,method-get,method-head]',allowed-origins='[$portalOrigin]',allowed-headers='[*]',expose-headers='[ETag]',max-age-seconds=3600"
+    # One --cors string, PowerShell single quotes: yc must see
+    # allowed-methods=[method-put,...] not '[method-put,...]' (one enum)
+    # and not [method-put,...] unquoted (PowerShell wildcard).
+    $cors = 'allowed-methods=[method-put,method-get,method-head],allowed-origins=[{0}],allowed-headers=[*],expose-headers=[ETag],max-age-seconds=3600' -f $portalOrigin
     yc storage bucket update --name $bucket --cors $cors
     Write-Host "bucket CORS for $portalOrigin"
 } catch {
