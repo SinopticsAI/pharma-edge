@@ -29,23 +29,14 @@ if (-not $gw) {
 Set-AccountValue "API_GATEWAY_ID" $gwId
 if ($gwDomain) { Set-AccountValue "API_GATEWAY_DOMAIN" $gwDomain }
 
-$cert = Get-AccountValue "CERT_WILDCARD_SINOPTICS_RU_ID"
-if ($cert) {
-    $attached = (yc serverless api-gateway get --id $gwId --format json | ConvertFrom-Json).attached_domains
-    $current = $attached | Where-Object { $_.domain -eq $domain } | Select-Object -First 1
-    if ($current -and $current.certificate_id -eq $cert) {
-        Write-Host "Domain $domain already attached with cert $cert"
-    } else {
-        if ($current) {
-            Write-Host "Reattaching $domain"
-            yc serverless api-gateway remove-domain --id $gwId --domain-id $current.domain_id
-        }
-        Write-Host "Attaching domain $domain with cert $cert"
-        yc serverless api-gateway add-domain --id $gwId --domain $domain --certificate-id $cert
-        if ($LASTEXITCODE -ne 0) { throw "add-domain failed for $domain" }
-    }
+# Domain and certificate are owned by pharma_env. Reattaching here swapped
+# a working managed cert for CERT_WILDCARD and broke TLS on the custom domain.
+$attached = (yc serverless api-gateway get --id $gwId --format json | ConvertFrom-Json).attached_domains
+$current = $attached | Where-Object { $_.domain -eq $domain } | Select-Object -First 1
+if ($current) {
+    Write-Host "Domain $domain already attached cert=$($current.certificate_id); leave as-is"
 } else {
-    Write-Host "WARNING: CERT_WILDCARD_SINOPTICS_RU_ID is empty; run discover.ps1"
+    Write-Host "WARNING: $domain is not attached; run deploy-gateway.ps1 in SinopticsAI/pharma_env"
 }
 
 Write-Host "Gateway $name = $gwId domain=$gwDomain"
