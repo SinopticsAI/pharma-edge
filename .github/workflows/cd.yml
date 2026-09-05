@@ -77,6 +77,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           PHARMA_PLANE_BASE_URL: ${{ secrets.PHARMA_PLANE_BASE_URL }}
+          PHARMA_PLANE_API_KEY: ${{ secrets.PHARMA_PLANE_API_KEY }}
           LOCKBOX_PG_ID: ${{ secrets.LOCKBOX_PG_ID }}
           LOCKBOX_HTTP_ID: ${{ secrets.LOCKBOX_HTTP_ID }}
           LOCKBOX_S3_ID: ${{ secrets.LOCKBOX_S3_ID }}

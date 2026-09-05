@@ -54,6 +54,7 @@ def main() -> int:
     aws_key = _clean("AWS_ACCESS_KEY_ID")
     aws_secret = _clean("AWS_SECRET_ACCESS_KEY")
     plane_base = _clean("PHARMA_PLANE_BASE_URL")
+    plane_key = _clean("PHARMA_PLANE_API_KEY")
 
     if not function_name:
         _error("YC_FUNCTION_NAME is empty")
@@ -80,6 +81,8 @@ def main() -> int:
     ]
     if plane_base:
         env_pairs.append(("PHARMA_PLANE_BASE_URL", plane_base))
+    if plane_key:
+        env_pairs.append(("PHARMA_PLANE_API_KEY", plane_key))
     if pg_password and not lockbox_pg:
         env_pairs.append(("PG_PASSWORD", pg_password))
     if api_key and not lockbox_http:
