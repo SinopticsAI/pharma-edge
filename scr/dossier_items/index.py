@@ -19,6 +19,7 @@ from edge_http import (
     resolve_identity,
 )
 from edge_pg import as_json, execute, query, query_one
+import edge_plane
 
 ROUTE_LIST = "GET /cases/{id}/items"
 ROUTE_UPLOAD = "POST /cases/{id}/items/upload-url"
@@ -28,7 +29,7 @@ BUCKET = os.getenv("DOSSIER_BUCKET") or "pharma-dossier"
 S3_ENDPOINT = os.getenv("S3_ENDPOINT") or "https://storage.yandexcloud.net"
 PRESIGN_TTL = 3600
 
-SELECT_CASE = "SELECT case_id FROM cases WHERE case_id = %(case_id)s AND account_id = %(account_id)s"
+SELECT_CASE = "SELECT * FROM cases WHERE case_id = %(case_id)s AND account_id = %(account_id)s"
 
 SELECT_ITEMS = """
 SELECT * FROM case_items
@@ -117,14 +118,44 @@ def _upload_url(event, case_id, identity, request_id):
     )
 
 
-def _confirm(case_id, item_id, identity, request_id):
+def _confirm(event, case_id, item_id, identity, request_id):
     row = query_one(SELECT_ITEM, {"item_id": item_id, "account_id": identity.account_id})
     if not row or row.get("case_id") != case_id:
         return error_response(404, "not_found", f"item {item_id} not found", request_id)
     execute(CONFIRM_ITEM, {"item_id": item_id, "account_id": identity.account_id})
     confirmed = query_one(SELECT_ITEM, {"item_id": item_id, "account_id": identity.account_id})
-    log_structured(request_id, "info", ROUTE_CONFIRM, "confirmed", item_id=item_id)
-    return json_response(200, {"data": row_to_item(confirmed)}, request_id)
+
+    try:
+        body = parse_body(event) or {}
+    except (ValueError, TypeError):
+        body = {}
+
+    started = False
+    if edge_plane.wants_plane(body.get("usePlane")) and edge_plane.is_configured():
+        case_row = query_one(SELECT_CASE, {"case_id": case_id, "account_id": identity.account_id}) or {}
+        item = edge_plane.item_payload(
+            item_id, str(row["item_type"]), str(row["object_key"]), BUCKET
+        )
+        try:
+            edge_plane.hand_to_plane(
+                case_id=case_id,
+                workflow=edge_plane.WORKFLOW_DOSSIER,
+                items=[item],
+                settings={
+                    "product_kind": case_row.get("kind"),
+                    "track": case_row.get("track"),
+                    "risk_class": case_row.get("risk_class"),
+                    "language": "ru",
+                },
+                title=str(case_row.get("code") or case_id),
+                request_id=request_id,
+            )
+            started = True
+        except edge_plane.PlaneError as exc:
+            log_structured(request_id, "error", ROUTE_CONFIRM, "plane start failed", error=str(exc))
+
+    log_structured(request_id, "info", ROUTE_CONFIRM, "confirmed", item_id=item_id, plane=started)
+    return json_response(200, {"data": row_to_item(confirmed), "extractionStarted": started}, request_id)
 
 
 def handler(event, context):
@@ -155,7 +186,7 @@ def handler(event, context):
         if method == "POST" and sub == "confirm-upload":
             if not item_id:
                 return error_response(400, "missing_item_id", "path parameter itemId is required", request_id)
-            return _confirm(case_id, item_id, identity, request_id)
+            return _confirm(event, case_id, item_id, identity, request_id)
         return error_response(405, "method_not_allowed", f"{method} {sub} is not allowed", request_id)
     except Exception as exc:
         log_structured(request_id, "error", route, "unhandled", error=str(exc))
