@@ -248,6 +248,19 @@ paths:
       x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organization_items" }
       responses: { "200": { description: Confirmed } }
 
+  /organizations/{id}/items/{itemId}/download-url:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: itemId, in: path, required: true, schema: { type: string } }
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    post:
+      summary: Presigned GET for an intake document
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/organization_items" }
+      responses: { "200": { description: Presigned GET } }
+
   /organizations/{id}/items/{itemId}/promote:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }

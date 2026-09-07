@@ -10,6 +10,7 @@ metadata passes through here, and files never travel through the agent.
 """
 
 import os
+from urllib.parse import quote
 
 import boto3
 
@@ -114,6 +115,8 @@ def _sub_route(event) -> str:
         return "upload-url"
     if path.endswith("/confirm-upload"):
         return "confirm-upload"
+    if path.endswith("/download-url"):
+        return "download-url"
     if path.endswith("/promote"):
         return "promote"
     return "items"
@@ -183,6 +186,48 @@ def _upload_url(event, organization_id, identity, request_id):
     return json_response(
         200,
         {"data": {"uploadUrl": url, "itemId": item_id, "objectKey": object_key, "expiresIn": PRESIGN_TTL}},
+        request_id,
+    )
+
+
+def _content_disposition(file_name: str) -> str:
+    """Names come from Chinese scans, so the ASCII form is only a fallback."""
+    ascii_name = file_name.encode("ascii", "replace").decode("ascii").replace('"', "")
+    return f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(file_name, safe='')}"
+
+
+def _download_url(organization_id, item_id, identity, request_id):
+    """Presigned GET so the browser can open the scan the agent read."""
+    row = query_one(SELECT_ITEM, {"item_id": item_id, "account_id": identity.account_id})
+    if not row or row.get("organization_id") != organization_id:
+        return error_response(404, "not_found", f"item {item_id} not found", request_id)
+
+    object_key = str(row.get("object_key") or "")
+    if not object_key or row.get("status") == "pending_upload":
+        # Nothing reached the bucket yet: a link would only 404 in a new tab.
+        return error_response(409, "not_uploaded", f"item {item_id} has no file yet", request_id)
+
+    file_name = str(row.get("file_name") or "document")
+    url = _s3().generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": BUCKET,
+            "Key": object_key,
+            "ResponseContentDisposition": _content_disposition(file_name),
+        },
+        ExpiresIn=PRESIGN_TTL,
+        HttpMethod="GET",
+    )
+    log_structured(
+        request_id,
+        "info",
+        "POST /organizations/{id}/items/{itemId}/download-url",
+        "presign get",
+        item_id=item_id,
+    )
+    return json_response(
+        200,
+        {"data": {"url": url, "fileName": file_name, "expiresIn": PRESIGN_TTL}},
         request_id,
     )
 
@@ -275,6 +320,10 @@ def handler(event, context):
             if not item_id:
                 return error_response(400, "missing_item_id", "path parameter itemId is required", request_id)
             return _confirm(event, organization_id, item_id, identity, request_id)
+        if method == "POST" and sub == "download-url":
+            if not item_id:
+                return error_response(400, "missing_item_id", "path parameter itemId is required", request_id)
+            return _download_url(organization_id, item_id, identity, request_id)
         if method == "POST" and sub == "promote":
             if not item_id:
                 return error_response(400, "missing_item_id", "path parameter itemId is required", request_id)

@@ -29,7 +29,7 @@
 | Функция | Триггер | Назначение |
 | --- | --- | --- |
 | `organizations` | `GET/POST /organizations`, `GET/PATCH /organizations/{id}`, `GET/POST .../risk` | Карточка компании, слоты, комплектность по разделам, KYC-гейт |
-| `organization_items` | `.../items`, `upload-url`, `confirm-upload`, `promote` | Документы интейка до кейса; подъём документа продукта в профиль компании |
+| `organization_items` | `.../items`, `upload-url`, `confirm-upload`, `download-url`, `promote` | Документы интейка до кейса; presigned GET для просмотра скана; подъём документа продукта в профиль компании |
 | `products` | `GET/POST /organizations/{id}/products`, `GET/PATCH /products/{id}`, `.../variants`, `.../approve` | Карточка продукта, варианты классификации, утверждение специалистом и затем клиентом, построение карты `M0`–`M12` |
 | `intake` | `/intake/sessions`, `.../messages` | Сессия диалога и журнал, который уходит клиенту вместе с кейсом |
 
