@@ -104,10 +104,14 @@ def update_items(
 
 
 def item_payload(item_id: str, item_type: str, object_key: str, bucket: str) -> dict[str, Any]:
-    """S3 reference, never bytes: Plane reads the object itself."""
+    """S3 object key only. Plane reads SOURCE_BUCKET (pharma-dossier)."""
+    key = (object_key or "").strip().lstrip("/")
+    prefix = f"{(bucket or '').strip()}/"
+    if bucket and key.startswith(prefix):
+        key = key[len(prefix) :]
     return {
         "item_id": item_id,
         "item_type": item_type,
-        "source_data": {"bucket_path": f"{bucket}/{object_key}"},
+        "source_data": {"bucket_path": key},
         "item_settings": {"expected_type": item_type},
     }
