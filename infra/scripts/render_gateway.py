@@ -90,9 +90,11 @@ def resolve(token: str, env_key: str, fallback: str, account: dict[str, str]) ->
     if token == "__CONTAINER_AGENT__":
         if _is_container_id(value):
             return value
-        # Do not probe yc when the id is unknown: CI SA often lacks
-        # serverless-containers.viewer, and the container may not exist yet.
-        # PermissionDenied must not fail CD — /chat/* stays a 503 stub.
+        looked = _yc_resource_id("container", fallback)
+        if _is_container_id(looked):
+            return looked
+        # PermissionDenied or a missing container must not fail CD:
+        # /chat/* stays a 503 stub until the id is known.
         return ""
     if value:
         return value

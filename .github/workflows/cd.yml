@@ -131,6 +131,7 @@ jobs:
         env:
           CUSTOM_DOMAIN: pharma-edge.sinoptics.ru
           SA_API_GATEWAY_ID: ${{ secrets.SA_API_GATEWAY_ID }}
+          CONTAINER_AGENT_ID: ${{ vars.CONTAINER_AGENT_ID || secrets.CONTAINER_AGENT_ID }}
         run: |
           set -euo pipefail
           python3 infra/scripts/render_gateway.py
