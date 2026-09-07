@@ -25,7 +25,13 @@ from edge_http import (
     parse_body,
     resolve_identity,
 )
-from edge_intake import default_org_slots, org_completeness, plain_profile, profile_is_sufficient
+from edge_intake import (
+    default_org_slots,
+    org_completeness,
+    plain_profile,
+    profile_is_sufficient,
+    suspect_org_fields,
+)
 from edge_pg import as_json, execute, query, query_one
 
 SELECT_ALL = """
@@ -201,6 +207,16 @@ def _patch(event, organization_id, identity, request_id):
                 409,
                 "profile_incomplete",
                 "legalName and registrationNumber are required before approval",
+                request_id,
+            )
+        # A number that fails its own check digit was misread. Approving it
+        # would carry the error into every document built from the profile.
+        suspect = suspect_org_fields(draft)
+        if suspect:
+            return error_response(
+                409,
+                "uscc_checksum",
+                f"{', '.join(suspect)} contradicts its check digit; confirm the value against the licence",
                 request_id,
             )
         # A company that failed the risk gate is not taken on, no exceptions.

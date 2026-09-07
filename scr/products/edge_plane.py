@@ -103,6 +103,50 @@ def update_items(
     return _post(f"/api/{API_VERSION}/cases/{case_id}/actions/update-items", payload, request_id)
 
 
+def wants_plane(value: Any) -> bool:
+    """True only when the cabinet sent usePlane on this confirm."""
+    if value is True:
+        return True
+    if isinstance(value, (int, float)) and int(value) == 1:
+        return True
+    if isinstance(value, str) and value.strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    return False
+
+
+def already_started(result: dict[str, Any]) -> bool:
+    return "already started" in str(result.get("message") or "").lower()
+
+
+def hand_to_plane(
+    *,
+    case_id: str,
+    workflow: str,
+    items: list[dict[str, Any]],
+    settings: Optional[dict[str, Any]] = None,
+    title: str = "Case",
+    request_id: str = "",
+) -> dict[str, Any]:
+    """Start a parent run, or append items when that case is already processing."""
+    extras = {**(settings or {}), "workflow": workflow}
+    try:
+        result = start_case(
+            case_id=case_id,
+            workflow=workflow,
+            items=items,
+            settings=settings,
+            title=title,
+            request_id=request_id,
+        )
+    except PlaneError as exc:
+        if exc.status != 409:
+            raise
+        return update_items(case_id, items, settings=extras, request_id=request_id)
+    if already_started(result):
+        return update_items(case_id, items, settings=extras, request_id=request_id)
+    return result
+
+
 def item_payload(item_id: str, item_type: str, object_key: str, bucket: str) -> dict[str, Any]:
     """S3 object key only. Plane reads SOURCE_BUCKET (pharma-dossier)."""
     key = (object_key or "").strip().lstrip("/")

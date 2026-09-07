@@ -89,6 +89,33 @@ def _flatten(value: Any) -> str:
     return str(value)
 
 
+# 18 characters of a 31-letter alphabet with a check digit: GB 32100-2015.
+_USCC_ALPHABET = "0123456789ABCDEFGHJKLMNPQRTUWXY"
+_USCC_WEIGHTS = (1, 3, 9, 27, 19, 26, 16, 17, 20, 29, 25, 13, 8, 24, 10, 30, 28)
+
+
+def uscc_looks_wrong(code: str) -> bool:
+    """Whether a registration number contradicts its own check digit.
+
+    Two scans of one licence gave two different codes, and only this arithmetic
+    told them apart. Nothing downstream questions a number once it is on the
+    card, so an unnoticed misread is worse here than an empty field.
+    """
+    value = str(code or "").strip().upper()
+    # An old 15-digit 注册号 is not a USCC and must pass untouched.
+    if len(value) != 18:
+        return False
+    total = 0
+    for index, char in enumerate(value[:17]):
+        position = _USCC_ALPHABET.find(char)
+        # Letters the standard leaves out — I, O, S, V, Z — mean a misread, not a code.
+        if position < 0:
+            return True
+        total += position * _USCC_WEIGHTS[index]
+    remainder = 31 - (total % 31)
+    return _USCC_ALPHABET[0 if remainder == 31 else remainder] != value[17]
+
+
 def _pick(extracted: dict[str, Any], aliases: tuple[str, ...]) -> tuple[str, float]:
     lowered = {str(k).strip().lower(): v for k, v in extracted.items()}
     for alias in aliases:
@@ -151,11 +178,16 @@ def _merge(
             continue
         value, confidence = _pick(extracted, names)
         if value:
-            out[field] = {
+            entry: dict[str, Any] = {
                 "value": value,
                 "source": source,
                 "confidence": confidence or None,
             }
+            # Filled is not the same as correct. The flag stays until a human
+            # confirms the number, because approval cannot be undone upstream.
+            if field == "registrationNumber" and uscc_looks_wrong(value):
+                entry["verified"] = False
+            out[field] = entry
     return out
 
 
@@ -169,6 +201,20 @@ def merge_product_draft(draft: dict[str, Any], parced: Any, source: str = "") ->
 
 def missing_org_fields(draft: dict[str, Any]) -> list[str]:
     return [f for f in ("legalName", "registrationNumber") if not draft_value(draft, f)]
+
+
+def suspect_org_fields(draft: dict[str, Any]) -> list[str]:
+    """Fields a document filled that contradict themselves.
+
+    Writing the field again clears it: a value typed by a person is the
+    authority, and a company whose code is genuinely non-standard must not end
+    up with a profile nobody can ever approve.
+    """
+    return [
+        field
+        for field, entry in (draft or {}).items()
+        if isinstance(entry, dict) and entry.get("verified") is False
+    ]
 
 
 def missing_product_fields(draft: dict[str, Any]) -> list[str]:
