@@ -286,6 +286,10 @@ CREATE TABLE IF NOT EXISTS intake_sessions (
     CONSTRAINT intake_sessions_scope_check CHECK (scope IN ('organization', 'product'))
 );
 CREATE INDEX IF NOT EXISTS idx_intake_sessions_account ON intake_sessions (account_id);
+CREATE INDEX IF NOT EXISTS idx_intake_sessions_account_org_updated
+    ON intake_sessions (account_id, organization_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_intake_sessions_account_product_updated
+    ON intake_sessions (account_id, product_id, updated_at DESC);
 
 -- Legal history of the case, exported to the client in full. Mastra keeps its
 -- own working memory in pharma_agent; this table is the record.

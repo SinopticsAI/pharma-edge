@@ -17,7 +17,16 @@ from typing import Any, Optional
 # ------------------------------------------------------- extraction to draft --
 
 _ORG_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
-    "legalName": ("company_name", "legal_name", "name", "entity_name"),
+    "legalName": (
+        "company_name",
+        "legal_name",
+        "name",
+        "entity_name",
+        "名称",
+        "企业名称",
+        "公司名称",
+        "单位名称",
+    ),
     "legalNameEn": ("company_name_en", "name_en", "english_name"),
     "registrationNumber": (
         "unified_social_credit_code",
@@ -25,12 +34,25 @@ _ORG_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
         "registration_number",
         "credit_code",
         "license_number",
+        "统一社会信用代码",
+        "社会信用代码",
+        "注册号",
     ),
-    "legalRepresentative": ("legal_representative", "representative", "legal_person"),
-    "address": ("address", "registered_address", "domicile"),
-    "establishedOn": ("establishment_date", "established_on", "registration_date"),
-    "businessScope": ("business_scope", "scope"),
-    "capital": ("registered_capital", "capital"),
+    "legalRepresentative": (
+        "legal_representative",
+        "representative",
+        "legal_person",
+        "法定代表人",
+    ),
+    "address": ("address", "registered_address", "domicile", "住所", "地址"),
+    "establishedOn": (
+        "establishment_date",
+        "established_on",
+        "registration_date",
+        "成立日期",
+    ),
+    "businessScope": ("business_scope", "scope", "经营范围"),
+    "capital": ("registered_capital", "capital", "注册资本"),
 }
 
 _PRODUCT_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
@@ -89,10 +111,15 @@ def extraction_of(parced: Any) -> dict[str, Any]:
     """Plane stores {case_id, item_id, item_type, extracted, status}."""
     if not isinstance(parced, dict):
         return {}
-    inner = parced.get("extracted")
-    if isinstance(inner, dict):
-        return inner
-    return {k: v for k, v in parced.items() if k not in ("case_id", "item_id", "status")}
+    for key in ("extracted", "ocr_json"):
+        inner = parced.get(key)
+        if isinstance(inner, dict) and inner:
+            return inner
+    return {
+        k: v
+        for k, v in parced.items()
+        if k not in ("case_id", "item_id", "status", "merge_meta", "_ref", "item_type")
+    }
 
 
 def draft_value(draft: dict[str, Any], field: str) -> str:

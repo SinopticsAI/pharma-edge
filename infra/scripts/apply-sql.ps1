@@ -38,7 +38,8 @@ if (-not $env:PGPASSWORD) {
 
 $sqlFiles = @(
     (Join-Path $RepoRoot "sql\01_cabinet.sql"),
-    (Join-Path $RepoRoot "sql\02_seed.sql")
+    (Join-Path $RepoRoot "sql\02_seed.sql"),
+    (Join-Path $RepoRoot "sql\03_intake_session_lookup.sql")
 )
 
 $connection = "host=$pgHost port=$pgPort dbname=$database user=$user sslmode=verify-full"

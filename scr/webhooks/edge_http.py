@@ -80,7 +80,11 @@ def require_api_key(event: dict, request_id: str, route: str) -> Optional[dict]:
             request_id,
         )
     headers = get_headers(event)
-    provided = headers.get("x-api-key") or ""
+    provided = (headers.get("x-api-key") or "").strip()
+    if not provided:
+        auth = (headers.get("authorization") or "").strip()
+        if auth.lower().startswith("bearer "):
+            provided = auth[7:].strip()
     if provided != expected:
         return json_response(
             401,

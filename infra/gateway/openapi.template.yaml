@@ -341,6 +341,17 @@ paths:
     options:
       x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
       responses: { "200": { description: CORS } }
+    get:
+      summary: Latest intake session for a company or product
+      security: [{ keycloak: [] }]
+      parameters:
+        - { name: organizationId, in: query, schema: { type: string } }
+        - { name: productId, in: query, schema: { type: string } }
+        - { name: scope, in: query, schema: { type: string, enum: [organization, product] } }
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/intake" }
+      responses:
+        "200": { description: Latest session with journal }
+        "404": { description: No session yet }
     post:
       summary: Open an intake session
       security: [{ keycloak: [] }]

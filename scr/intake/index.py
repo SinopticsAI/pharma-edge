@@ -12,6 +12,7 @@ from edge_http import (
     get_http_method,
     get_path,
     get_path_params,
+    get_query,
     parse_body,
     resolve_identity,
 )
@@ -20,6 +21,24 @@ from edge_pg import as_json, execute, query, query_one
 SELECT_SESSION = """
 SELECT * FROM intake_sessions
 WHERE session_id = %(session_id)s AND account_id = %(account_id)s
+"""
+
+SELECT_LATEST_ORG = """
+SELECT * FROM intake_sessions
+WHERE account_id = %(account_id)s
+  AND organization_id = %(organization_id)s
+  AND scope = 'organization'
+ORDER BY updated_at DESC
+LIMIT 1
+"""
+
+SELECT_LATEST_PRODUCT = """
+SELECT * FROM intake_sessions
+WHERE account_id = %(account_id)s
+  AND product_id = %(product_id)s
+  AND scope = 'product'
+ORDER BY updated_at DESC
+LIMIT 1
 """
 
 INSERT_SESSION = """
@@ -95,16 +114,62 @@ def _create_session(event, identity, request_id):
     return json_response(201, {"data": row_to_session(row)}, request_id)
 
 
-def _get_session(session_id, identity, request_id):
-    row = query_one(SELECT_SESSION, {"session_id": session_id, "account_id": identity.account_id})
-    if not row:
-        return error_response(404, "not_found", f"session {session_id} not found", request_id)
+def _session_with_messages(row, identity):
     payload = row_to_session(row)
+    session_id = row["session_id"]
     payload["messages"] = [
         row_to_message(item)
         for item in query(SELECT_MESSAGES, {"session_id": session_id, "account_id": identity.account_id})
     ]
-    return json_response(200, {"data": payload}, request_id)
+    return payload
+
+
+def _get_session(session_id, identity, request_id):
+    row = query_one(SELECT_SESSION, {"session_id": session_id, "account_id": identity.account_id})
+    if not row:
+        return error_response(404, "not_found", f"session {session_id} not found", request_id)
+    return json_response(200, {"data": _session_with_messages(row, identity)}, request_id)
+
+
+def _find_latest_session(event, identity, request_id):
+    params = get_query(event)
+    organization_id = str(params.get("organizationId") or "").strip() or None
+    product_id = str(params.get("productId") or "").strip() or None
+    scope = str(params.get("scope") or "").strip()
+    if not scope:
+        if organization_id and not product_id:
+            scope = "organization"
+        elif product_id and not organization_id:
+            scope = "product"
+    if scope not in INTAKE_SCOPES:
+        return error_response(400, "invalid_scope", "scope must be organization or product", request_id)
+
+    if scope == "organization":
+        if not organization_id:
+            return error_response(400, "missing_organization", "organizationId is required", request_id)
+        row = query_one(
+            SELECT_LATEST_ORG,
+            {"account_id": identity.account_id, "organization_id": organization_id},
+        )
+    else:
+        if not product_id:
+            return error_response(400, "missing_product", "productId is required", request_id)
+        row = query_one(
+            SELECT_LATEST_PRODUCT,
+            {"account_id": identity.account_id, "product_id": product_id},
+        )
+
+    if not row:
+        return error_response(404, "not_found", "session not found", request_id)
+    log_structured(
+        request_id,
+        "info",
+        "GET /intake/sessions",
+        "latest",
+        session_id=row["session_id"],
+        scope=scope,
+    )
+    return json_response(200, {"data": _session_with_messages(row, identity)}, request_id)
 
 
 def _list_messages(session_id, identity, request_id):
@@ -175,6 +240,8 @@ def handler(event, context):
             return _create_session(event, identity, request_id)
         if method == "GET" and session_id:
             return _get_session(session_id, identity, request_id)
+        if method == "GET" and not session_id:
+            return _find_latest_session(event, identity, request_id)
         return error_response(405, "method_not_allowed", f"{method} is not allowed", request_id)
     except Exception as exc:
         log_structured(request_id, "error", route, "unhandled", error=str(exc))
