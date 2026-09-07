@@ -1,4 +1,4 @@
-"""Cloud Function: webhooks — extraction results coming back from Plane.
+"""Cloud Function: webhooks — extraction results from Mastra or Plane.
 
 Service-to-service only: X-API-Key, no Keycloak token, never a browser.
 
@@ -8,6 +8,7 @@ without Plane needing to know the difference.
 """
 
 from common_log import get_request_id, json_response, log_structured
+from edge_domain import ITEM_TYPES
 from edge_http import error_response, get_http_method, get_path, get_path_params, parse_body, require_api_key
 from edge_intake import merge_org_draft, merge_product_draft, product_completeness
 from edge_pg import as_json, execute, query_one
@@ -17,8 +18,14 @@ SELECT_CASE_ITEM = "SELECT * FROM case_items WHERE item_id = %(item_id)s"
 
 UPDATE_ORG_ITEM = """
 UPDATE organization_items
-SET parced_data = %(parced_data)s, status = %(status)s, updated_at = now()
+SET parced_data = %(parced_data)s, status = %(status)s, item_type = %(item_type)s, updated_at = now()
 WHERE item_id = %(item_id)s
+"""
+
+FILL_SLOT = """
+UPDATE organization_slots
+SET status = 'filled', document_id = %(item_id)s, updated_at = now()
+WHERE organization_id = %(organization_id)s AND slot_key = %(slot_key)s
 """
 
 UPDATE_CASE_ITEM = """
@@ -88,11 +95,28 @@ def _item_update(event, item_id, request_id):
 
     org_item = query_one(SELECT_ORG_ITEM, {"item_id": item_id})
     if org_item:
+        requested_type = str(body.get("itemType") or body.get("item_type") or "").strip()
+        previous_type = str(org_item.get("item_type") or "")
+        item_type = requested_type if requested_type in ITEM_TYPES else previous_type
         execute(
             UPDATE_ORG_ITEM,
-            {"item_id": item_id, "parced_data": as_json(parced), "status": status},
+            {
+                "item_id": item_id,
+                "parced_data": as_json(parced),
+                "status": status,
+                "item_type": item_type or previous_type,
+            },
         )
-        source = _source_label(org_item)
+        if item_type and item_type != previous_type:
+            execute(
+                FILL_SLOT,
+                {
+                    "organization_id": org_item["organization_id"],
+                    "slot_key": item_type,
+                    "item_id": item_id,
+                },
+            )
+        source = _source_label({**org_item, "item_type": item_type or previous_type})
         if org_item.get("level") == "product" and org_item.get("product_id"):
             product = query_one(SELECT_PRODUCT, {"product_id": org_item["product_id"]})
             if product:

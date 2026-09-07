@@ -399,6 +399,16 @@ paths:
       x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/agent" }
       responses: { "200": { description: AI SDK UI message stream } }
 
+  /extract:
+    options:
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
+      responses: { "200": { description: CORS } }
+    post:
+      summary: Intake OCR outside the chat turn. Cabinet kicks this after confirm-upload.
+      security: [{ keycloak: [] }]
+      x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/agent" }
+      responses: { "200": { description: Extracted draft written through the item webhook } }
+
   /cases:
     options:
       x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/cors" }
@@ -513,7 +523,7 @@ paths:
       - { name: id, in: path, required: true, schema: { type: string } }
       - { name: itemId, in: path, required: true, schema: { type: string } }
     post:
-      summary: Extraction result from Plane
+      summary: Extraction result from Mastra or Plane
       x-yc-apigateway-integration: { $ref: "#/components/x-yc-apigateway-integrations/webhooks" }
       responses: { "200": { description: Stored } }
 
