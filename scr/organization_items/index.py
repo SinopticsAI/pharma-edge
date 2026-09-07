@@ -25,7 +25,6 @@ from edge_http import (
     resolve_identity,
 )
 from edge_pg import as_json, execute, query, query_one
-import edge_plane
 
 BUCKET = os.getenv("DOSSIER_BUCKET") or "pharma-dossier"
 S3_ENDPOINT = os.getenv("S3_ENDPOINT") or "https://storage.yandexcloud.net"
@@ -243,28 +242,12 @@ def _confirm(event, organization_id, item_id, identity, request_id):
     slot_key = str(row.get("item_type") or "")
     execute(FILL_SLOT, {"organization_id": organization_id, "slot_key": slot_key, "item_id": item_id})
 
-    # Hand the file to Plane for OCR and extraction. A pipeline that is not
-    # configured yet must not fail the upload.
-    session_id = str((parse_body(event) or {}).get("sessionId") or "") if event.get("body") else ""
-    started = False
-    if edge_plane.is_configured():
-        try:
-            plane_case = edge_plane.intake_case_id(session_id or organization_id)
-            edge_plane.start_case(
-                case_id=plane_case,
-                workflow=edge_plane.WORKFLOW_INTAKE,
-                items=[edge_plane.item_payload(item_id, str(row["item_type"]), str(row["object_key"]), BUCKET)],
-                settings={"intake_scope": row.get("level") or "company", "language": "zh"},
-                title="intake",
-                request_id=request_id,
-            )
-            started = True
-        except edge_plane.PlaneError as exc:
-            log_structured(request_id, "error", "confirm-upload", "plane start failed", error=str(exc))
-
+    # Intake OCR is Mastra POST /extract, kicked by the cabinet when it sees
+    # uploaded. Plane stays on dossier cases; starting it here left items stuck
+    # in uploaded when the webhook was deduped.
     _audit(identity, organization_id, "document.uploaded", {"itemId": item_id, "itemType": row.get("item_type")})
     confirmed = query_one(SELECT_ITEM, {"item_id": item_id, "account_id": identity.account_id})
-    return json_response(200, {"data": row_to_org_item(confirmed), "extractionStarted": started}, request_id)
+    return json_response(200, {"data": row_to_org_item(confirmed), "extractionStarted": False}, request_id)
 
 
 def _promote(organization_id, item_id, identity, request_id):
