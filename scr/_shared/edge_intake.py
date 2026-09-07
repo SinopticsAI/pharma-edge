@@ -89,10 +89,15 @@ def extraction_of(parced: Any) -> dict[str, Any]:
     """Plane stores {case_id, item_id, item_type, extracted, status}."""
     if not isinstance(parced, dict):
         return {}
-    inner = parced.get("extracted")
-    if isinstance(inner, dict):
-        return inner
-    return {k: v for k, v in parced.items() if k not in ("case_id", "item_id", "status")}
+    for key in ("extracted", "ocr_json"):
+        inner = parced.get(key)
+        if isinstance(inner, dict) and inner:
+            return inner
+    return {
+        k: v
+        for k, v in parced.items()
+        if k not in ("case_id", "item_id", "status", "merge_meta", "_ref", "item_type")
+    }
 
 
 def draft_value(draft: dict[str, Any], field: str) -> str:
