@@ -121,6 +121,8 @@ def main() -> None:
     for token, (env_key, fallback) in PLACEHOLDERS.items():
         if token == "__CONTAINER_AGENT__":
             continue
+        if token not in text:
+            continue
         value = resolve(token, env_key, fallback, account)
         if token.startswith("__FN_") or token == "__SA_API_GATEWAY_ID__":
             if not value or value.startswith("pharma-edge-"):
