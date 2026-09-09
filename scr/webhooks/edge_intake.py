@@ -241,9 +241,16 @@ def profile_is_sufficient(profile: Any) -> bool:
     return True
 
 
-def product_intake_blocked(org_status: str) -> bool:
-    """A product needs an approved company profile, not a complete one."""
-    return org_status != "profile_approved"
+def company_card_exists(org: Any) -> bool:
+    """A saved draft with name and number is already a company card."""
+    if not isinstance(org, dict):
+        return False
+    return profile_is_sufficient(org.get("profile")) or profile_is_sufficient(org.get("draft"))
+
+
+def product_intake_blocked(org: Any) -> bool:
+    """A product needs a company card, not a complete legalization track."""
+    return not company_card_exists(org)
 
 
 # ------------------------------------------------------------- company slots --

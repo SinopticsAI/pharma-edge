@@ -39,7 +39,7 @@ from edge_intake import (
 from edge_pg import as_json, execute, query, query_one
 
 SELECT_ORG = """
-SELECT organization_id, status, name FROM organizations
+SELECT organization_id, status, name, draft, profile FROM organizations
 WHERE organization_id = %(organization_id)s AND account_id = %(account_id)s
 """
 
@@ -193,12 +193,12 @@ def _create(event, organization_id, identity, request_id):
     org = query_one(SELECT_ORG, {"organization_id": organization_id, "account_id": identity.account_id})
     if not org:
         return error_response(404, "not_found", f"organization {organization_id} not found", request_id)
-    if product_intake_blocked(str(org.get("status"))):
-        # Partial company data is fine; an unapproved profile is not.
+    if product_intake_blocked(org):
+        # Incomplete legalization is fine; a card without name and number is not.
         return error_response(
             409,
-            "profile_not_approved",
-            "approve the company profile before adding a product",
+            "card_incomplete",
+            "legalName and registrationNumber are required on the company card before adding a product",
             request_id,
             organizationStatus=org.get("status"),
         )
