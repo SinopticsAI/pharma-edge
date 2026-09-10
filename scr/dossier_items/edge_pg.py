@@ -138,6 +138,45 @@ def execute(sql: str, params: Optional[dict | tuple] = None) -> int:
             return cur.rowcount
 
 
+# One registration number per account. Expression matches sql/04_organization_uscc.sql.
+_ORG_USCC_EXPR = """NULLIF(upper(trim(BOTH FROM COALESCE(
+      NULLIF(draft #>> '{registrationNumber,value}', ''),
+      CASE WHEN jsonb_typeof(draft -> 'registrationNumber') = 'string'
+           THEN NULLIF(draft ->> 'registrationNumber', '') END,
+      NULLIF(profile #>> '{registrationNumber,value}', ''),
+      CASE WHEN jsonb_typeof(profile -> 'registrationNumber') = 'string'
+           THEN NULLIF(profile ->> 'registrationNumber', '') END,
+      ''
+    ))), '')"""
+
+SELECT_ORGS_BY_USCC = f"""
+SELECT * FROM organizations
+WHERE account_id = %(account_id)s
+  AND {_ORG_USCC_EXPR} = %(uscc)s
+ORDER BY created_at DESC
+LIMIT 200
+"""
+
+
+def list_orgs_by_uscc(account_id: str, uscc: str) -> list[dict[str, Any]]:
+    code = str(uscc or "").strip().upper()
+    if not code:
+        return []
+    return query(SELECT_ORGS_BY_USCC, {"account_id": account_id, "uscc": code})
+
+
+def find_org_by_uscc(
+    account_id: str,
+    uscc: str,
+    exclude_organization_id: str = "",
+) -> Optional[dict[str, Any]]:
+    exclude = str(exclude_organization_id or "")
+    for row in list_orgs_by_uscc(account_id, uscc):
+        if str(row.get("organization_id") or "") != exclude:
+            return row
+    return None
+
+
 def as_json(value: Any) -> Jsonb:
     """Explicit jsonb wrapper so dicts never land in a text column by accident."""
     return Jsonb(value if value is not None else {})

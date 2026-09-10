@@ -51,6 +51,26 @@ CREATE TABLE IF NOT EXISTS organizations (
 CREATE INDEX IF NOT EXISTS idx_organizations_account ON organizations (account_id);
 CREATE INDEX IF NOT EXISTS idx_organizations_draft ON organizations USING gin (draft);
 
+-- One 统一社会信用代码 per account. Empty cards have no number yet and stay free.
+CREATE OR REPLACE FUNCTION organization_uscc(draft jsonb, profile jsonb)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT NULLIF(upper(trim(BOTH FROM COALESCE(
+    NULLIF(draft #>> '{registrationNumber,value}', ''),
+    CASE WHEN jsonb_typeof(draft -> 'registrationNumber') = 'string'
+         THEN NULLIF(draft ->> 'registrationNumber', '') END,
+    NULLIF(profile #>> '{registrationNumber,value}', ''),
+    CASE WHEN jsonb_typeof(profile -> 'registrationNumber') = 'string'
+         THEN NULLIF(profile ->> 'registrationNumber', '') END,
+    ''
+  ))), '');
+$$;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_account_uscc
+    ON organizations (account_id, organization_uscc(draft, profile))
+    WHERE organization_uscc(draft, profile) IS NOT NULL;
+
 -- Legalization checklist. section groups slots into the progress panel:
 -- identity | documents | authority | banking | risk.
 CREATE TABLE IF NOT EXISTS organization_slots (

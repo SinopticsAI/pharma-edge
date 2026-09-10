@@ -10,6 +10,8 @@ if str(ROOT) not in sys.path:
 from edge_intake import (  # noqa: E402
     merge_org_draft,
     missing_org_fields,
+    normalize_registration_number,
+    registration_number_of,
     suspect_org_fields,
     uscc_looks_wrong,
 )
@@ -45,6 +47,21 @@ def test_org_z5eynpwj_uscc_only_still_misses_name():
     )
     assert draft["registrationNumber"]["value"] == "91330106MAK20KYJ17"
     assert missing_org_fields(draft) == ["legalName"]
+
+
+def test_normalize_registration_number_strips_and_uppercases():
+    assert normalize_registration_number(" 91330106mak20kyj17 ") == "91330106MAK20KYJ17"
+    assert normalize_registration_number("") == ""
+    assert normalize_registration_number(None) == ""
+
+
+def test_registration_number_of_reads_draft_then_profile():
+    assert (
+        registration_number_of({"registrationNumber": {"value": "91330106mak20kyj17"}})
+        == "91330106MAK20KYJ17"
+    )
+    assert registration_number_of({}, {"registrationNumber": "91330106MAK20KYJ17"}) == "91330106MAK20KYJ17"
+    assert registration_number_of({}, {}) == ""
 
 
 def test_uscc_check_digit_separates_two_readings_of_one_licence():

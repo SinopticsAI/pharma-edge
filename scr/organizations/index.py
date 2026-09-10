@@ -17,11 +17,14 @@ from edge_domain import (
     row_to_organization,
     row_to_risk_report,
 )
+from psycopg.errors import UniqueViolation
+
 from edge_http import (
     error_response,
     get_http_method,
     get_path,
     get_path_params,
+    get_query,
     parse_body,
     resolve_identity,
 )
@@ -30,9 +33,10 @@ from edge_intake import (
     org_completeness,
     plain_profile,
     profile_is_sufficient,
+    registration_number_of,
     suspect_org_fields,
 )
-from edge_pg import as_json, execute, query, query_one
+from edge_pg import as_json, execute, find_org_by_uscc, list_orgs_by_uscc, query, query_one
 
 SELECT_ALL = """
 SELECT * FROM organizations
@@ -144,8 +148,29 @@ def _sub_route(event) -> str:
     return "risk" if get_path(event).rstrip("/").endswith("/risk") else "organizations"
 
 
-def _list(identity, request_id):
-    rows = query(SELECT_ALL, {"account_id": identity.account_id})
+def _duplicate_uscc(request_id, uscc: str, existing_id: str):
+    return error_response(
+        409,
+        "duplicate_uscc",
+        f"registration number {uscc} is already on company {existing_id}",
+        request_id,
+        existingOrganizationId=existing_id,
+        registrationNumber=uscc,
+    )
+
+
+def _uscc_taken(account_id: str, uscc: str, exclude_organization_id: str = ""):
+    if not uscc:
+        return None
+    return find_org_by_uscc(account_id, uscc, exclude_organization_id)
+
+
+def _list(event, identity, request_id):
+    uscc = (get_query(event).get("uscc") or "").strip()
+    if uscc:
+        rows = list_orgs_by_uscc(identity.account_id, uscc)
+    else:
+        rows = query(SELECT_ALL, {"account_id": identity.account_id})
     return json_response(200, {"data": [row_to_organization(row) for row in rows]}, request_id)
 
 
@@ -155,17 +180,29 @@ def _create(event, identity, request_id):
     except (ValueError, TypeError) as exc:
         return error_response(400, "invalid_json", str(exc), request_id)
 
+    draft = body.get("draft") if isinstance(body.get("draft"), dict) else {}
+    uscc = registration_number_of(draft)
+    taken = _uscc_taken(identity.account_id, uscc)
+    if taken:
+        return _duplicate_uscc(request_id, uscc, str(taken["organization_id"]))
+
     organization_id = new_id("org")
-    execute(
-        INSERT_ORG,
-        {
-            "organization_id": organization_id,
-            "account_id": identity.account_id,
-            "kind": str(body.get("kind") or "cn"),
-            "name": as_json(as_l10n(body.get("name") or "")),
-            "draft": as_json(body.get("draft") or {}),
-        },
-    )
+    try:
+        execute(
+            INSERT_ORG,
+            {
+                "organization_id": organization_id,
+                "account_id": identity.account_id,
+                "kind": str(body.get("kind") or "cn"),
+                "name": as_json(as_l10n(body.get("name") or "")),
+                "draft": as_json(draft),
+            },
+        )
+    except UniqueViolation:
+        taken = _uscc_taken(identity.account_id, uscc)
+        if taken:
+            return _duplicate_uscc(request_id, uscc, str(taken["organization_id"]))
+        raise
     _seed_slots(organization_id)
     _audit(identity, "organization", organization_id, "organization.created")
     row = query_one(SELECT_ONE, {"organization_id": organization_id, "account_id": identity.account_id})
@@ -229,6 +266,11 @@ def _patch(event, organization_id, identity, request_id):
                 request_id,
             )
 
+    uscc = registration_number_of(draft, profile)
+    taken = _uscc_taken(identity.account_id, uscc, organization_id)
+    if taken:
+        return _duplicate_uscc(request_id, uscc, str(taken["organization_id"]))
+
     name = current["name"]
     if body.get("name"):
         name = as_l10n(body["name"])
@@ -239,17 +281,23 @@ def _patch(event, organization_id, identity, request_id):
         legal_en = draft_value(draft, "legalNameEn") or legal
         name = {"ru": legal_en, "en": legal_en, "zh": legal}
 
-    execute(
-        UPDATE_ORG,
-        {
-            "organization_id": organization_id,
-            "account_id": identity.account_id,
-            "name": as_json(name),
-            "status": status,
-            "draft": as_json(draft),
-            "profile": as_json(profile),
-        },
-    )
+    try:
+        execute(
+            UPDATE_ORG,
+            {
+                "organization_id": organization_id,
+                "account_id": identity.account_id,
+                "name": as_json(name),
+                "status": status,
+                "draft": as_json(draft),
+                "profile": as_json(profile),
+            },
+        )
+    except UniqueViolation:
+        taken = _uscc_taken(identity.account_id, uscc, organization_id)
+        if taken:
+            return _duplicate_uscc(request_id, uscc, str(taken["organization_id"]))
+        raise
     if status != current["status"]:
         _audit(identity, "organization", organization_id, f"organization.{status}")
 
@@ -331,7 +379,7 @@ def handler(event, context):
         if method == "GET" and organization_id:
             return _get(organization_id, identity, request_id)
         if method == "GET":
-            return _list(identity, request_id)
+            return _list(event, identity, request_id)
         if method == "POST":
             return _create(event, identity, request_id)
         if method == "PATCH" and organization_id:

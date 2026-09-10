@@ -10,8 +10,15 @@ without Plane needing to know the difference.
 from common_log import get_request_id, json_response, log_structured
 from edge_domain import ITEM_TYPES
 from edge_http import error_response, get_http_method, get_path, get_path_params, parse_body, require_api_key
-from edge_intake import merge_org_draft, merge_product_draft, product_completeness
-from edge_pg import as_json, execute, query_one
+from psycopg.errors import UniqueViolation
+
+from edge_intake import (
+    merge_org_draft,
+    merge_product_draft,
+    product_completeness,
+    registration_number_of,
+)
+from edge_pg import as_json, execute, find_org_by_uscc, query_one
 
 SELECT_ORG_ITEM = "SELECT * FROM organization_items WHERE item_id = %(item_id)s"
 SELECT_CASE_ITEM = "SELECT * FROM case_items WHERE item_id = %(item_id)s"
@@ -81,6 +88,54 @@ def _source_label(row: dict) -> str:
     return f"{item_type} · {file_name}" if file_name else item_type
 
 
+def _duplicate_uscc_item(
+    item_id,
+    org_item,
+    parced,
+    status,
+    item_type,
+    previous_type,
+    other,
+    uscc,
+    request_id,
+):
+    """Keep the OCR result, do not copy the number onto this empty card."""
+    flagged = dict(parced) if isinstance(parced, dict) else {}
+    flagged["duplicate_uscc"] = {
+        "organizationId": other["organization_id"],
+        "registrationNumber": uscc,
+    }
+    execute(
+        UPDATE_ORG_ITEM,
+        {
+            "item_id": item_id,
+            "parced_data": as_json(flagged),
+            "status": status,
+            "item_type": item_type or previous_type,
+        },
+    )
+    log_structured(
+        request_id,
+        "info",
+        "webhook item_update",
+        "duplicate uscc, draft not merged",
+        item_id=item_id,
+        existing_organization_id=other["organization_id"],
+    )
+    return json_response(
+        200,
+        {
+            "data": {
+                "itemId": item_id,
+                "level": org_item.get("level"),
+                "duplicateUscc": True,
+                "existingOrganizationId": other["organization_id"],
+            }
+        },
+        request_id,
+    )
+
+
 def _item_update(event, item_id, request_id):
     try:
         body = parse_body(event)
@@ -133,10 +188,46 @@ def _item_update(event, item_id, request_id):
             org = query_one(SELECT_ORG, {"organization_id": org_item["organization_id"]})
             if org:
                 draft = merge_org_draft(org.get("draft") or {}, parced, source)
-                execute(
-                    UPDATE_ORG_DRAFT,
-                    {"organization_id": org["organization_id"], "draft": as_json(draft)},
+                uscc = registration_number_of(draft, org.get("profile") or {})
+                other = (
+                    find_org_by_uscc(str(org["account_id"]), uscc, str(org["organization_id"]))
+                    if uscc
+                    else None
                 )
+                if other:
+                    return _duplicate_uscc_item(
+                        item_id,
+                        org_item,
+                        parced,
+                        status,
+                        item_type,
+                        previous_type,
+                        other,
+                        uscc,
+                        request_id,
+                    )
+                try:
+                    execute(
+                        UPDATE_ORG_DRAFT,
+                        {"organization_id": org["organization_id"], "draft": as_json(draft)},
+                    )
+                except UniqueViolation:
+                    raced = find_org_by_uscc(
+                        str(org["account_id"]), uscc, str(org["organization_id"])
+                    )
+                    if raced:
+                        return _duplicate_uscc_item(
+                            item_id,
+                            org_item,
+                            parced,
+                            status,
+                            item_type,
+                            previous_type,
+                            raced,
+                            uscc,
+                            request_id,
+                        )
+                    raise
         log_structured(request_id, "info", "webhook item_update", "intake item stored", item_id=item_id)
         return json_response(200, {"data": {"itemId": item_id, "level": org_item.get("level")}}, request_id)
 

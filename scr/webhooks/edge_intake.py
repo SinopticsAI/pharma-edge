@@ -94,6 +94,11 @@ _USCC_ALPHABET = "0123456789ABCDEFGHJKLMNPQRTUWXY"
 _USCC_WEIGHTS = (1, 3, 9, 27, 19, 26, 16, 17, 20, 29, 25, 13, 8, 24, 10, 30, 28)
 
 
+def normalize_registration_number(code: Any) -> str:
+    """Strip and uppercase a USCC / 注册号 so the same licence compares equal."""
+    return str(code or "").strip().upper()
+
+
 def uscc_looks_wrong(code: str) -> bool:
     """Whether a registration number contradicts its own check digit.
 
@@ -155,6 +160,17 @@ def draft_value(draft: dict[str, Any], field: str) -> str:
     if isinstance(entry, dict):
         return str(entry.get("value") or "").strip()
     return str(entry or "").strip()
+
+
+def registration_number_of(
+    draft: dict[str, Any] | None = None,
+    profile: dict[str, Any] | None = None,
+) -> str:
+    """The number that identifies a company card, from draft or approved profile."""
+    code = normalize_registration_number(draft_value(draft or {}, "registrationNumber"))
+    if code:
+        return code
+    return normalize_registration_number(draft_value(profile or {}, "registrationNumber"))
 
 
 def plain_profile(draft: dict[str, Any]) -> dict[str, str]:
