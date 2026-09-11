@@ -436,7 +436,7 @@ def _build_case(product, org, variant, identity, request_id):
             "kind": variant["kind"],
             "track": variant["track"],
             "risk_class": variant["riskClass"],
-            "waiting_for": as_json(as_l10n("Дорожная карта", "Roadmap", "路线图")),
+            "waiting_for": as_json(as_l10n({"ru": "Дорожная карта", "en": "Roadmap", "zh": "路线图"})),
             "cycle_months": as_json(variant["cycleMonths"]),
         },
     )

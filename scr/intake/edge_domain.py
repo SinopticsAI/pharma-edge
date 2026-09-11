@@ -118,7 +118,13 @@ def iso(value: Any) -> str:
     return str(value)
 
 
-def as_l10n(value: Any, fallback: str = "") -> dict[str, str]:
+def as_l10n(value: Any, fallback: str = "", zh: str = "") -> dict[str, str]:
+    if isinstance(value, str) and value.strip() and zh:
+        return {
+            "ru": value.strip(),
+            "en": (fallback or value).strip() or value.strip(),
+            "zh": zh.strip(),
+        }
     if isinstance(value, str) and value.strip():
         text = value.strip()
         return {"ru": text, "en": text, "zh": text}

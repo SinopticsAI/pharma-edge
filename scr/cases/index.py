@@ -101,7 +101,7 @@ def _create(event, identity, request_id):
             "kind": kind,
             "track": track,
             "risk_class": str(body.get("riskClass") or "1"),
-            "waiting_for": as_json(as_l10n("Квалификация", "Qualification", "定性")),
+            "waiting_for": as_json(as_l10n({"ru": "Квалификация", "en": "Qualification", "zh": "定性"})),
             "due_working_days": int(body.get("dueWorkingDays") or 30),
             "cycle_months": as_json(body.get("cycleMonths") or [12, 18]),
             "intake_session_id": str(body.get("intakeSessionId") or "") or None,
