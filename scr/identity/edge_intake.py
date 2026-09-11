@@ -285,13 +285,37 @@ def suspect_org_fields(draft: dict[str, Any]) -> list[str]:
     ]
 
 
-def missing_product_fields(draft: dict[str, Any]) -> list[str]:
+def l10n_text(value: Any) -> str:
+    """Reads a display string from an L10n object, a draft field, or a bare value."""
+    if isinstance(value, dict):
+        return str(
+            value.get("value") or value.get("zh") or value.get("en") or value.get("ru") or ""
+        ).strip()
+    return str(value or "").strip()
+
+
+def product_display_name(draft: dict[str, Any], product_name: Any = None) -> str:
+    """Draft name first; the card title counts when the draft line is still empty."""
+    return draft_value(draft, "name") or l10n_text(product_name)
+
+
+def missing_product_fields(draft: dict[str, Any], product_name: Any = None) -> list[str]:
     """Without these the agent cannot classify, so it asks for more documents."""
-    return [f for f in ("name", "intendedUse") if not draft_value(draft, f)]
+    missing: list[str] = []
+    if not product_display_name(draft, product_name):
+        missing.append("name")
+    if not draft_value(draft, "intendedUse"):
+        missing.append("intendedUse")
+    return missing
+
+
+def can_seed_fallback_variants(draft: dict[str, Any], product_name: Any = None) -> bool:
+    """A display name is enough for a planning-frame draft. Completeness is not a gate."""
+    return bool(product_display_name(draft, product_name))
 
 
 def product_completeness(draft: dict[str, Any]) -> int:
-    """Variants are offered at 100% only, so this number is a gate, not decor."""
+    """Progress only. Variants need a name and an intended use, not 100."""
     wanted = ("name", "intendedUse", "models", "manufacturer", "composition", "sites")
     filled = sum(1 for field in wanted if draft_value(draft, field))
     return int(round(filled * 100 / len(wanted)))
@@ -636,6 +660,31 @@ _FALLBACK_VARIANTS: dict[str, list[dict[str, Any]]] = {
             "budget": _budget(4150, 16400, 41200),
             "cycle_months": [14, 20],
         },
+        {
+            "variant_type": "forbidden",
+            "kind": "device",
+            "track": "pp1684",
+            "risk_class": "2a",
+            "title": _l10n(
+                "Заявить класс 2а, чтобы сэкономить",
+                "File as class 2a to cut cost",
+                "申报 2а 以降低费用",
+            ),
+            "summary": _l10n(
+                "Пошлина ниже и нет инспекции, но заниженный класс вернётся с экспертизы: потеря месяцев и пошлины. Платформа это не подаёт.",
+                "A lower fee and no inspection, but an understated class comes back from review — months and the fee lost. The platform will not file this.",
+                "规费更低且无生产检查，但低报类别会被审评退回，损失数月与规费。平台不会申报此项。",
+            ),
+            "pros": [],
+            "cons": [_l10n("Досье вернут", "The dossier will be returned", "卷宗将被退回")],
+            "reason": _l10n(
+                "Мы это не подаём.",
+                "We will not file this.",
+                "我们不会申报此项。",
+            ),
+            "budget": _budget(0, 0, 0),
+            "cycle_months": [12, 16],
+        },
     ],
     "drug": [
         {
@@ -661,7 +710,7 @@ _FALLBACK_VARIANTS: dict[str, list[dict[str, Any]]] = {
 
 
 def fallback_variants(kind: str) -> list[dict[str, Any]]:
-    """Used when the qualify agent has not answered or returned nothing usable."""
+    """Planning-frame draft when the agent has not written options yet."""
     key = kind if kind in _FALLBACK_VARIANTS else "device"
     return [dict(item) for item in _FALLBACK_VARIANTS[key]]
 

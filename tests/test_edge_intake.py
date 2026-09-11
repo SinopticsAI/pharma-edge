@@ -8,11 +8,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from edge_intake import (  # noqa: E402
+    can_seed_fallback_variants,
     empty_slot_fills,
+    fallback_variants,
     infer_org_item_type,
     inferred_item_type_updates,
     merge_org_draft,
     missing_org_fields,
+    missing_product_fields,
     normalize_registration_number,
     registration_number_of,
     suspect_org_fields,
@@ -275,3 +278,20 @@ def test_empty_slot_fills_closes_authority_and_bank_on_other_items():
     ]
     assert empty_slot_fills(slots, items) == [("signatory", "it-sig"), ("bank-account", "it-bank")]
     assert inferred_item_type_updates(items) == [("it-sig", "signatory"), ("it-bank", "bank-account")]
+
+
+def test_device_fallback_has_three_cards_including_forbidden():
+    variants = fallback_variants("device")
+    types = [item["variant_type"] for item in variants]
+    assert types == ["recommended", "alternative", "forbidden"]
+    assert variants[2]["risk_class"] == "2a"
+    assert variants[2]["reason"]["ru"]
+
+
+def test_product_name_on_the_card_counts_for_the_gate():
+    draft = {"intendedUse": {"value": "self-test blood glucose"}}
+    assert missing_product_fields(draft) == ["name"]
+    assert missing_product_fields(draft, {"zh": "血糖仪", "en": "CGH"}) == []
+    assert can_seed_fallback_variants({}, {"zh": "血糖仪"}) is True
+    assert can_seed_fallback_variants({}) is False
+    assert can_seed_fallback_variants({"name": {"value": "CGH"}}) is True

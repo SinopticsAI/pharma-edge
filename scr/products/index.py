@@ -2,10 +2,11 @@
 
 Two rules shape this file.
 
-Variants are offered only at full completeness: until the agent has enough
-facts it asks for documents instead of guessing a class. And a variant marked
-`forbidden` exists to be explained, never to be chosen — the platform refuses
-to file a class it knows is wrong.
+Variants need a name and an intended use, not 100% completeness. Until the
+agent writes its own options the core seeds a planning-frame draft so the
+classify page is not empty. A variant marked `forbidden` exists to be
+explained, never to be chosen — the platform refuses to file a class it
+knows is wrong.
 
 Approval runs specialist first, client second. The case and its node map are
 built only when both are in.
@@ -30,7 +31,9 @@ from edge_http import (
     resolve_identity,
 )
 from edge_intake import (
+    can_seed_fallback_variants,
     default_node_map,
+    fallback_variants,
     guess_kind,
     missing_product_fields,
     product_completeness,
@@ -241,7 +244,9 @@ def _get(product_id, identity, request_id):
         },
     )
     payload["documents"] = [row_to_org_item(item) for item in inherited]
-    payload["missing"] = missing_product_fields(payload["draft"])
+    payload["missing"] = missing_product_fields(payload["draft"], payload.get("name"))
+    if _ensure_fallback_variants(product_id, identity, payload):
+        payload["status"] = "variants_pending"
     payload["variants"] = [
         row_to_variant(item)
         for item in query(SELECT_VARIANTS, {"product_id": product_id, "account_id": identity.account_id})
@@ -269,15 +274,14 @@ def _patch(event, product_id, identity, request_id):
         return error_response(400, "invalid_status", f"status must be one of {PRODUCT_STATUSES}", request_id)
 
     completeness = product_completeness(draft)
+    kind = str(body.get("kind") or current["kind"] or "") or guess_kind(draft)
+    name = as_l10n(body["name"]) if body.get("name") else current["name"]
     if status == "data_approved":
-        missing = missing_product_fields(draft)
+        missing = missing_product_fields(draft, name)
         if missing:
             return error_response(
                 409, "product_incomplete", "cannot approve while fields are missing", request_id, missing=missing
             )
-
-    kind = str(body.get("kind") or current["kind"] or "") or guess_kind(draft)
-    name = as_l10n(body["name"]) if body.get("name") else current["name"]
 
     execute(
         UPDATE_PRODUCT,
@@ -297,36 +301,17 @@ def _patch(event, product_id, identity, request_id):
 
 
 def _get_variants(product_id, identity, request_id):
+    row = query_one(SELECT_PRODUCT, {"product_id": product_id, "account_id": identity.account_id})
+    if not row:
+        return error_response(404, "not_found", f"product {product_id} not found", request_id)
+    _ensure_fallback_variants(product_id, identity, row_to_product(row))
     rows = query(SELECT_VARIANTS, {"product_id": product_id, "account_id": identity.account_id})
     return json_response(200, {"data": [row_to_variant(row) for row in rows]}, request_id)
 
 
-def _post_variants(event, product_id, identity, request_id):
-    row = query_one(SELECT_PRODUCT, {"product_id": product_id, "account_id": identity.account_id})
-    if not row:
-        return error_response(404, "not_found", f"product {product_id} not found", request_id)
-    product = row_to_product(row)
-
-    if product["completeness"] < 100 and missing_product_fields(product["draft"]):
-        return error_response(
-            409,
-            "not_complete",
-            "classification options are proposed at full completeness only",
-            request_id,
-            completeness=product["completeness"],
-            missing=missing_product_fields(product["draft"]),
-        )
-
-    try:
-        body = parse_body(event)
-    except (ValueError, TypeError) as exc:
-        return error_response(400, "invalid_json", str(exc), request_id)
-
-    variants = body.get("variants")
-    if not isinstance(variants, list) or not variants:
-        return error_response(400, "invalid_body", "variants must be a non-empty list", request_id)
-
+def _write_variant_entries(product_id, identity, product, variants, *, model=None, prompt_version=None):
     execute(DELETE_VARIANTS, {"product_id": product_id, "account_id": identity.account_id})
+    written = 0
     for entry in variants:
         if not isinstance(entry, dict):
             continue
@@ -353,6 +338,7 @@ def _post_variants(event, product_id, identity, request_id):
                 "cycle_months": as_json(entry.get("cycleMonths") or entry.get("cycle_months") or [12, 18]),
             },
         )
+        written += 1
 
     execute(
         UPDATE_PRODUCT,
@@ -370,7 +356,64 @@ def _post_variants(event, product_id, identity, request_id):
         identity,
         product_id,
         "variants.proposed",
-        {"count": len(variants)},
+        {"count": written},
+        model=model,
+        prompt_version=prompt_version,
+    )
+    return written
+
+
+def _ensure_fallback_variants(product_id, identity, product) -> bool:
+    if product.get("caseId") or product.get("selectedVariantId") or product.get("specialistApprovedAt"):
+        return False
+    existing = query(SELECT_VARIANTS, {"product_id": product_id, "account_id": identity.account_id})
+    if existing:
+        return False
+    if not can_seed_fallback_variants(product.get("draft") or {}, product.get("name")):
+        return False
+    kind = product.get("kind") or guess_kind(product.get("draft") or {})
+    _write_variant_entries(
+        product_id,
+        identity,
+        product,
+        fallback_variants(kind),
+        model="fallback",
+        prompt_version="edge-fallback",
+    )
+    return True
+
+
+def _post_variants(event, product_id, identity, request_id):
+    row = query_one(SELECT_PRODUCT, {"product_id": product_id, "account_id": identity.account_id})
+    if not row:
+        return error_response(404, "not_found", f"product {product_id} not found", request_id)
+    product = row_to_product(row)
+
+    missing = missing_product_fields(product["draft"], product.get("name"))
+    if missing:
+        return error_response(
+            409,
+            "not_complete",
+            "classification options need a name and an intended use",
+            request_id,
+            completeness=product["completeness"],
+            missing=missing,
+        )
+
+    try:
+        body = parse_body(event)
+    except (ValueError, TypeError) as exc:
+        return error_response(400, "invalid_json", str(exc), request_id)
+
+    variants = body.get("variants")
+    if not isinstance(variants, list) or not variants:
+        return error_response(400, "invalid_body", "variants must be a non-empty list", request_id)
+
+    _write_variant_entries(
+        product_id,
+        identity,
+        product,
+        variants,
         model=str(body.get("model") or "") or None,
         prompt_version=str(body.get("promptVersion") or "") or None,
     )
