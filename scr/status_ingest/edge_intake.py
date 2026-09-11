@@ -13,21 +13,22 @@ A card without a source cannot be checked, and checking it is the whole point.
 from __future__ import annotations
 
 from typing import Any, Optional
+import re
 
 # ------------------------------------------------------- extraction to draft --
 
 _ORG_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "legalName": (
-        "company_name",
-        "legal_name",
-        "name",
-        "entity_name",
         "名称",
         "企业名称",
         "公司名称",
         "单位名称",
+        "company_name",
+        "legal_name",
+        "entity_name",
+        "name",
     ),
-    "legalNameEn": ("company_name_en", "name_en", "english_name"),
+    "legalNameEn": ("company_name_en", "name_en", "english_name", "英文名称", "英文"),
     "registrationNumber": (
         "unified_social_credit_code",
         "uscc",
@@ -89,6 +90,19 @@ def _flatten(value: Any) -> str:
     return str(value)
 
 
+_CHINESE_FIRM_RE = re.compile(r"有限责任公司|股份有限公司|有限公司|集团|厂|中心")
+_LICENSE_TITLE_RE = re.compile(r"营业执照|副本|TEST FORM|SAMPLE FOR INTAKE|仅供测试|测试数据")
+
+
+def _is_chinese_company_name(text: str) -> bool:
+    if not text or _LICENSE_TITLE_RE.search(text):
+        return False
+    if not _CHINESE_FIRM_RE.search(text) or not re.search(r"[\u4e00-\u9fff]", text):
+        return False
+    trade = _CHINESE_FIRM_RE.sub("", text)
+    return bool(re.search(r"[\u4e00-\u9fff]{2,}", trade))
+
+
 # 18 characters of a 31-letter alphabet with a check digit: GB 32100-2015.
 _USCC_ALPHABET = "0123456789ABCDEFGHJKLMNPQRTUWXY"
 _USCC_WEIGHTS = (1, 3, 9, 27, 19, 26, 16, 17, 20, 29, 25, 13, 8, 24, 10, 30, 28)
@@ -137,6 +151,34 @@ def _pick(extracted: dict[str, Any], aliases: tuple[str, ...]) -> tuple[str, flo
                     confidence = 0.0
             return text, confidence
     return "", 0.0
+
+
+def _pick_legal_name(extracted: dict[str, Any], aliases: tuple[str, ...]) -> tuple[str, float]:
+    """Prefer 名称 over 英文名称 / the title 营业执照.
+
+    samples2 prints 英文名称 above 名称. Vision often fills `name` or
+    company_name with the English line first; the Chinese line is still in 名称.
+    """
+    lowered = {str(k).strip().lower(): v for k, v in extracted.items()}
+    fallback = ("", 0.0)
+    for alias in aliases:
+        if alias not in lowered:
+            continue
+        raw = lowered[alias]
+        text = _flatten(raw)
+        if not text:
+            continue
+        confidence = 0.0
+        if isinstance(raw, dict):
+            try:
+                confidence = float(raw.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                confidence = 0.0
+        if _is_chinese_company_name(text):
+            return text, confidence
+        if not fallback[0] and not _LICENSE_TITLE_RE.search(text):
+            fallback = (text, confidence)
+    return fallback
 
 
 def extraction_of(parced: Any) -> dict[str, Any]:
@@ -192,7 +234,9 @@ def _merge(
         # Later documents fill blanks; they never overwrite what a human saw.
         if draft_value(out, field):
             continue
-        value, confidence = _pick(extracted, names)
+        value, confidence = (
+            _pick_legal_name(extracted, names) if field == "legalName" else _pick(extracted, names)
+        )
         if value:
             entry: dict[str, Any] = {
                 "value": value,

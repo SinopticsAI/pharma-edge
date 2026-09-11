@@ -37,6 +37,8 @@ ITEM_TYPES = frozenset(
         "instruction-ru",
         "tech-spec",
         "poa-upp",
+        "signatory",
+        "bank-account",
         "lab-protocol",
         "regulator-letter",
         "business-license",
@@ -57,6 +59,8 @@ ORG_ITEM_TYPES = frozenset(
         "gmp-cn",
         "iso-13485",
         "poa-upp",
+        "signatory",
+        "bank-account",
         "trademark",
         "other",
     }
