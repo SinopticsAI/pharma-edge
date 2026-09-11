@@ -33,6 +33,40 @@ def test_merge_maps_chinese_name_key():
     assert missing_org_fields(draft) == []
 
 
+def test_merge_prefers_chinese_名称_over_english_name_on_andon_licence():
+    draft = merge_org_draft(
+        {},
+        {
+            "extracted": {
+                "company_name": "Andon Health Co., Ltd.",
+                "name": "Andon Health Co., Ltd.",
+                "英文名称": "Andon Health Co., Ltd.",
+                "名称": "天津九安医疗电子股份有限公司",
+                "unified_social_credit_code": "911200006008904220",
+            }
+        },
+        source="business-license · 01-yingye-zhizhao.jpg",
+    )
+    assert draft["legalName"]["value"] == "天津九安医疗电子股份有限公司"
+    assert draft["legalNameEn"]["value"] == "Andon Health Co., Ltd."
+    assert draft["registrationNumber"]["value"] == "911200006008904220"
+
+
+def test_merge_skips_营业执照_title_as_legal_name():
+    draft = merge_org_draft(
+        {},
+        {
+            "extracted": {
+                "name": "营业执照",
+                "名称": "天津九安医疗电子股份有限公司",
+                "unified_social_credit_code": "911200006008904220",
+            }
+        },
+        source="business-license · 01-yingye-zhizhao.jpg",
+    )
+    assert draft["legalName"]["value"] == "天津九安医疗电子股份有限公司"
+
+
 def test_org_z5eynpwj_uscc_only_still_misses_name():
     """Cabinet card for org-z5eynpwj: 注册号 present, name missing."""
     draft = merge_org_draft(
