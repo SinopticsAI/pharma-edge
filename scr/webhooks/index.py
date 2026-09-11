@@ -13,6 +13,7 @@ from edge_http import error_response, get_http_method, get_path, get_path_params
 from psycopg.errors import UniqueViolation
 
 from edge_intake import (
+    infer_org_item_type,
     merge_org_draft,
     merge_product_draft,
     product_completeness,
@@ -152,7 +153,8 @@ def _item_update(event, item_id, request_id):
     if org_item:
         requested_type = str(body.get("itemType") or body.get("item_type") or "").strip()
         previous_type = str(org_item.get("item_type") or "")
-        item_type = requested_type if requested_type in ITEM_TYPES else previous_type
+        raw_type = requested_type if requested_type in ITEM_TYPES else previous_type
+        item_type = infer_org_item_type(raw_type, str(org_item.get("file_name") or ""), parced)
         execute(
             UPDATE_ORG_ITEM,
             {
@@ -162,7 +164,7 @@ def _item_update(event, item_id, request_id):
                 "item_type": item_type or previous_type,
             },
         )
-        if item_type and item_type != previous_type:
+        if item_type and item_type != "other":
             execute(
                 FILL_SLOT,
                 {

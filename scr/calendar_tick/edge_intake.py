@@ -13,7 +13,10 @@ A card without a source cannot be checked, and checking it is the whole point.
 from __future__ import annotations
 
 from typing import Any, Optional
+import json
 import re
+
+from edge_domain import ITEM_TYPES
 
 # ------------------------------------------------------- extraction to draft --
 
@@ -183,6 +186,11 @@ def _pick_legal_name(extracted: dict[str, Any], aliases: tuple[str, ...]) -> tup
 
 def extraction_of(parced: Any) -> dict[str, Any]:
     """Plane stores {case_id, item_id, item_type, extracted, status}."""
+    if isinstance(parced, str):
+        try:
+            parced = json.loads(parced)
+        except (TypeError, ValueError):
+            return {}
     if not isinstance(parced, dict):
         return {}
     for key in ("extracted", "ocr_json"):
@@ -439,6 +447,119 @@ def org_completeness(slots: list[dict[str, Any]]) -> dict[str, Any]:
             for key, value in sections.items()
         ],
     }
+
+
+_BANK_KEYS = ("account_number", "permit_no", "bank_name", "account_name", "开户许可证")
+_SIGNATORY_KEYS = ("id_number", "citizen_id", "identity_number", "公民身份号码", "居民身份证")
+_LICENSE_EXTRA_KEYS = ("registered_capital", "注册资本", "business_scope", "经营范围")
+_AUTHORITY_BANK_SLOTS = ("signatory", "bank-account")
+
+
+def _extracted_has(extracted: dict[str, Any], keys: tuple[str, ...]) -> bool:
+    lowered = {str(key).strip().lower(): value for key, value in extracted.items()}
+    for key in keys:
+        value = lowered.get(key.lower())
+        text = "" if value is None else str(value).strip()
+        if text and text.lower() not in ("null", "none"):
+            return True
+    return False
+
+
+def _item_blob(item_type: str, file_name: str, parced: Any) -> str:
+    extracted = extraction_of(parced)
+    parts = [item_type, file_name]
+    for key, value in extracted.items():
+        parts.append(str(key))
+        parts.append("" if value is None else str(value))
+    if isinstance(parced, dict):
+        parts.append(str(parced.get("item_type") or ""))
+        parts.append(str(parced.get("reason") or ""))
+    return "\n".join(parts)
+
+
+def infer_org_item_type(item_type: str = "", file_name: str = "", parced: Any = None) -> str:
+    """Recover signatory / bank-account when vision kept `other` or 营业执照."""
+    extracted = extraction_of(parced)
+    blob = _item_blob(item_type, file_name, parced)
+    folded = re.sub(r"\s+", "", blob.lower())
+    name = (file_name or "").lower()
+
+    has_bank = (
+        _extracted_has(extracted, _BANK_KEYS)
+        or "开户许可证" in blob
+        or "itemtype=bank-account" in folded
+        or "bank-account" in name
+    )
+    if has_bank:
+        return "bank-account"
+
+    has_signatory = (
+        _extracted_has(extracted, _SIGNATORY_KEYS)
+        or "法定代表人身份证明" in blob
+        or "itemtype=signatory" in folded
+        or "signatory" in name
+    )
+    if has_signatory:
+        return "signatory"
+
+    current = (item_type or "").strip()
+    if current in ITEM_TYPES and current not in ("other", "business-license"):
+        return current
+
+    has_license = (
+        "itemtype=business-license" in folded
+        or "yingye-zhizhao" in name
+        or (name.endswith("business-license.jpg") or "business-license" in name)
+        or ("营业执照" in blob and _extracted_has(extracted, _LICENSE_EXTRA_KEYS))
+    )
+    if has_license:
+        return "business-license"
+
+    return current if current in ITEM_TYPES else (current or "other")
+
+
+def inferred_item_type_updates(items: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    """(item_id, inferred_type) for company files whose stored type is wrong."""
+    updates: list[tuple[str, str]] = []
+    for item in items:
+        if str(item.get("level") or "company") == "product":
+            continue
+        item_id = str(item.get("item_id") or item.get("id") or "")
+        if not item_id:
+            continue
+        stored = str(item.get("item_type") or "")
+        inferred = infer_org_item_type(stored, str(item.get("file_name") or ""), item.get("parced_data"))
+        if inferred != stored and inferred != "other":
+            updates.append((item_id, inferred))
+    return updates
+
+
+def empty_slot_fills(slots: list[dict[str, Any]], items: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    """(slot_key, item_id) to close empty signatory / bank-account slots."""
+    empty = {
+        str(slot.get("key"))
+        for slot in slots
+        if slot.get("key") in _AUTHORITY_BANK_SLOTS and slot.get("status") != "filled"
+    }
+    fills: list[tuple[str, str]] = []
+    used: set[str] = set()
+    for item in items:
+        if str(item.get("status") or "") != "parsed":
+            continue
+        if str(item.get("level") or "company") == "product":
+            continue
+        item_id = str(item.get("item_id") or item.get("id") or "")
+        if not item_id:
+            continue
+        inferred = infer_org_item_type(
+            str(item.get("item_type") or ""),
+            str(item.get("file_name") or ""),
+            item.get("parced_data"),
+        )
+        if inferred in empty and inferred not in used:
+            fills.append((inferred, item_id))
+            used.add(inferred)
+    return fills
 
 
 # ---------------------------------------------------- classification variants --

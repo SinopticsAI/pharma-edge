@@ -30,6 +30,8 @@ from edge_http import (
 )
 from edge_intake import (
     default_org_slots,
+    empty_slot_fills,
+    inferred_item_type_updates,
     org_completeness,
     plain_profile,
     profile_is_sufficient,
@@ -54,6 +56,24 @@ SELECT_SLOTS = """
 SELECT * FROM organization_slots
 WHERE organization_id = %(organization_id)s
 ORDER BY slot_key
+"""
+
+SELECT_ORG_ITEMS = """
+SELECT item_id, item_type, file_name, status, parced_data, level
+FROM organization_items
+WHERE organization_id = %(organization_id)s
+"""
+
+FILL_SLOT = """
+UPDATE organization_slots
+SET status = 'filled', document_id = %(item_id)s, updated_at = now()
+WHERE organization_id = %(organization_id)s AND slot_key = %(slot_key)s
+"""
+
+UPDATE_ITEM_TYPE = """
+UPDATE organization_items
+SET item_type = %(item_type)s, updated_at = now()
+WHERE item_id = %(item_id)s AND item_type IS DISTINCT FROM %(item_type)s
 """
 
 INSERT_ORG = """
@@ -138,7 +158,20 @@ def _seed_slots(organization_id: str) -> None:
 
 def _with_slots(row: dict) -> dict:
     payload = row_to_organization(row)
-    slots = [row_to_org_slot(item) for item in query(SELECT_SLOTS, {"organization_id": payload["id"]})]
+    organization_id = payload["id"]
+    items = query(SELECT_ORG_ITEMS, {"organization_id": organization_id})
+    for item_id, item_type in inferred_item_type_updates(items):
+        execute(UPDATE_ITEM_TYPE, {"item_id": item_id, "item_type": item_type})
+        for item in items:
+            if item.get("item_id") == item_id:
+                item["item_type"] = item_type
+    slots = [row_to_org_slot(item) for item in query(SELECT_SLOTS, {"organization_id": organization_id})]
+    for slot_key, item_id in empty_slot_fills(slots, items):
+        execute(
+            FILL_SLOT,
+            {"organization_id": organization_id, "slot_key": slot_key, "item_id": item_id},
+        )
+    slots = [row_to_org_slot(item) for item in query(SELECT_SLOTS, {"organization_id": organization_id})]
     payload["slots"] = slots
     payload["completeness"] = org_completeness(slots)
     return payload
