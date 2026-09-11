@@ -173,10 +173,10 @@ def test_infer_cofoe_bank_from_extracted_fields():
     )
 
 
-def test_infer_cofoe_bank_from_filename_when_vision_kept_licence_fields():
+def test_infer_does_not_type_from_filename():
     assert (
         infer_org_item_type(
-            "business-license",
+            "other",
             "07-bank-account.jpg",
             {
                 "extracted": {
@@ -186,7 +186,7 @@ def test_infer_cofoe_bank_from_filename_when_vision_kept_licence_fields():
                 }
             },
         )
-        == "bank-account"
+        == "other"
     )
 
 
@@ -201,7 +201,7 @@ def test_infer_cofoe_signatory_from_id_number():
     )
 
 
-def test_infer_cofoe_signatory_from_filename():
+def test_infer_does_not_type_signatory_from_filename():
     assert (
         infer_org_item_type(
             "other",
@@ -213,7 +213,24 @@ def test_infer_cofoe_signatory_from_filename():
                 }
             },
         )
-        == "signatory"
+        == "other"
+    )
+
+
+def test_infer_does_not_type_license_from_filename():
+    assert (
+        infer_org_item_type(
+            "other",
+            "01-yingye-zhizhao.jpg",
+            {
+                "extracted": {
+                    "company_name": "可孚医疗科技股份有限公司",
+                    "unified_social_credit_code": "91430111696240992G",
+                    "legal_representative": "张敏",
+                }
+            },
+        )
+        == "other"
     )
 
 

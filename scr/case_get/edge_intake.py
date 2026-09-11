@@ -502,17 +502,15 @@ def _item_blob(item_type: str, file_name: str, parced: Any) -> str:
 
 
 def infer_org_item_type(item_type: str = "", file_name: str = "", parced: Any = None) -> str:
-    """Recover signatory / bank-account when vision kept `other` or 营业执照."""
+    """Recover the slot type from what was read, not from the file name."""
     extracted = extraction_of(parced)
-    blob = _item_blob(item_type, file_name, parced)
+    blob = _item_blob(item_type, "", parced)
     folded = re.sub(r"\s+", "", blob.lower())
-    name = (file_name or "").lower()
 
     has_bank = (
         _extracted_has(extracted, _BANK_KEYS)
         or "开户许可证" in blob
         or "itemtype=bank-account" in folded
-        or "bank-account" in name
     )
     if has_bank:
         return "bank-account"
@@ -521,7 +519,6 @@ def infer_org_item_type(item_type: str = "", file_name: str = "", parced: Any = 
         _extracted_has(extracted, _SIGNATORY_KEYS)
         or "法定代表人身份证明" in blob
         or "itemtype=signatory" in folded
-        or "signatory" in name
     )
     if has_signatory:
         return "signatory"
@@ -530,11 +527,8 @@ def infer_org_item_type(item_type: str = "", file_name: str = "", parced: Any = 
     if current in ITEM_TYPES and current not in ("other", "business-license"):
         return current
 
-    has_license = (
-        "itemtype=business-license" in folded
-        or "yingye-zhizhao" in name
-        or (name.endswith("business-license.jpg") or "business-license" in name)
-        or ("营业执照" in blob and _extracted_has(extracted, _LICENSE_EXTRA_KEYS))
+    has_license = "itemtype=business-license" in folded or (
+        "营业执照" in blob and _extracted_has(extracted, _LICENSE_EXTRA_KEYS)
     )
     if has_license:
         return "business-license"
