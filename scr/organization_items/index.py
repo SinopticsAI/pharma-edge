@@ -15,7 +15,7 @@ from urllib.parse import quote
 import boto3
 
 from common_log import get_request_id, json_response, log_structured
-from edge_domain import ITEM_TYPES, ORG_ITEM_TYPES, as_l10n, new_id, row_to_org_item
+from edge_domain import ORG_ITEM_TYPES, as_l10n, item_type_of, new_id, row_to_org_item
 from edge_http import (
     error_response,
     get_http_method,
@@ -142,9 +142,7 @@ def _upload_url(event, organization_id, identity, request_id):
     except (ValueError, TypeError) as exc:
         return error_response(400, "invalid_json", str(exc), request_id)
 
-    item_type = str(body.get("itemType") or "other")
-    if item_type not in ITEM_TYPES:
-        return error_response(400, "invalid_item_type", "unknown itemType", request_id)
+    item_type = item_type_of(body.get("itemType"))
 
     product_id = str(body.get("productId") or "") or None
     level = "product" if product_id else "company"

@@ -99,6 +99,20 @@ ORG_PROFILE_REQUIRED = ("legalName", "registrationNumber")
 PROFILE_SECTIONS = ("identity", "documents", "authority", "banking", "risk")
 
 
+def item_type_of(value: Any = None) -> str:
+    """Unknown labels and l10n objects become other so upload-url does not 400."""
+    if isinstance(value, dict):
+        for key in ("value", "zh", "en", "ru"):
+            inner = value.get(key)
+            if isinstance(inner, str) and inner.strip():
+                value = inner
+                break
+        else:
+            return "other"
+    text = str(value or "").strip().lower()
+    return text if text in ITEM_TYPES else "other"
+
+
 def new_id(prefix: str) -> str:
     alphabet = string.ascii_lowercase + string.digits
     suffix = "".join(random.choice(alphabet) for _ in range(8))
